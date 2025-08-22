@@ -2,7 +2,7 @@ const app = require('./app');
 const config = require('./config/config');
 const logger = require('./config/logger');
 
-const port = config.port || 3000;
+const port = process.env.PORT || config.port || 3001;
 
 const server = app.listen(port, () => {
   logger.info(`Server running on port ${port}`);
