@@ -38,7 +38,7 @@ const createTripValidation = [
       if (req.body.destination && req.body.destination.endDate) {
         const endDate = new Date(req.body.destination.endDate);
         if (startDate >= endDate) {
-          throw new Error('Start date must be before end date');
+          throw new Error('End date must be after start date');
         }
       }
       
@@ -77,8 +77,8 @@ const createTripValidation = [
   
   body('budget.currency')
     .optional()
-    .matches(currencyRegex).withMessage('Currency must be a valid 3-letter ISO 4217 currency code')
-    .toUpperCase(),
+    .toUpperCase()
+    .matches(currencyRegex).withMessage('Currency must be a valid 3-letter ISO 4217 currency code'),
   
   body('preferences.interests')
     .optional()
@@ -169,8 +169,8 @@ const updateTripValidation = [
   
   body('budget.currency')
     .optional()
-    .matches(currencyRegex).withMessage('Currency must be a valid 3-letter ISO 4217 currency code')
-    .toUpperCase(),
+    .toUpperCase()
+    .matches(currencyRegex).withMessage('Currency must be a valid 3-letter ISO 4217 currency code'),
   
   body('budget.breakdown.accommodation')
     .optional()

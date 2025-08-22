@@ -59,6 +59,8 @@ const getUserTrips = async (req, res) => {
     responseService.sendSuccess(res, result);
   } catch (error) {
     console.error('Get user trips error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error message:', error.message);
     responseService.handleServiceError(res, error, 'Server error');
   }
 };

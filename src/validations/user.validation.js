@@ -288,7 +288,7 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader) {
-    return res.status(401).json({ message: 'Access token required' });
+    return res.status(401).json({ message: 'Access token is required' });
   }
 
   const parts = authHeader.split(' ');

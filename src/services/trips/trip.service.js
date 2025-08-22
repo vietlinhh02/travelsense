@@ -64,7 +64,7 @@ class TripService {
         sortOrder = 'desc'
       } = options;
       
-      // Validate status parameter
+      // Validate status parameter only if provided
       if (status && !['draft', 'planned', 'in-progress', 'completed'].includes(status)) {
         throw new Error('INVALID_STATUS');
       }
@@ -74,7 +74,7 @@ class TripService {
       if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 50) {
         throw new Error('INVALID_LIMIT');
       }
-      const parsedOffset = Math.max(parseInt(offset), 0);
+      const parsedOffset = Math.max(parseInt(offset || 0), 0);
       
       // Validate sortBy parameter
       const validSortFields = ['createdAt', 'updatedAt', 'name', 'destination.startDate'];
@@ -111,11 +111,13 @@ class TripService {
       return {
         trips: trips.map(trip => {
           // Calculate virtual fields for lean objects
-          if (trip.destination.startDate && trip.destination.endDate) {
+          if (trip.destination && trip.destination.startDate && trip.destination.endDate) {
             const timeDiff = trip.destination.endDate.getTime() - trip.destination.startDate.getTime();
             trip.duration = Math.ceil(timeDiff / (1000 * 3600 * 24));
           }
-          trip.totalTravelers = trip.travelers.adults + trip.travelers.children + trip.travelers.infants;
+          if (trip.travelers) {
+            trip.totalTravelers = (trip.travelers.adults || 0) + (trip.travelers.children || 0) + (trip.travelers.infants || 0);
+          }
           return trip;
         }),
         pagination: {

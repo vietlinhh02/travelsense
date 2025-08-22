@@ -115,7 +115,7 @@ class ResponseService {
       // Trip errors
       'TRIP_NOT_FOUND': { status: 404, message: 'Trip not found' },
       'TRIP_ACCESS_DENIED': { status: 403, message: 'Access denied to this trip' },
-      'INVALID_TRIP_ID': { status: 400, message: 'Invalid trip ID format' },
+      'INVALID_TRIP_ID': { status: 400, message: 'Trip ID must be a valid MongoDB ObjectId' },
       'INVALID_STATUS': { status: 400, message: 'Status must be one of: draft, planned, in-progress, completed' },
       'INVALID_LIMIT': { status: 400, message: 'Limit must be between 1 and 50' },
       'INVALID_SORT_BY': { status: 400, message: 'sortBy must be one of: createdAt, updatedAt, name, destination.startDate' },
