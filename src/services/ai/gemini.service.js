@@ -4,6 +4,7 @@ const GeminiApiClient = require('./geminiApiClient');
 const PromptBuilder = require('./promptBuilder');
 const ResponseParser = require('./responseParser');
 const ActivityTemplateService = require('./activityTemplateService');
+const LongTripHandler = require('./longTripHandler');
 
 class GeminiService {
   constructor() {
@@ -11,6 +12,7 @@ class GeminiService {
     this.promptBuilder = new PromptBuilder();
     this.responseParser = new ResponseParser();
     this.templateService = new ActivityTemplateService();
+    this.longTripHandler = new LongTripHandler();
   }
 
   /**
@@ -117,24 +119,56 @@ class GeminiService {
         throw new Error('TRIP_ALREADY_HAS_ITINERARY');
       }
 
-      // Prepare structured prompt using PromptBuilder
-      prompt = this.promptBuilder.buildItineraryPrompt(trip, focus);
-      
-      // Call Gemini Pro for structured output
-      const response = await this._callGeminiAPIWithFallback('pro', prompt);
-      
+      // Analyze trip for long duration handling
+      const tripAnalysis = this.longTripHandler.analyzeTrip(trip);
+      console.log(`📈 Trip analysis: ${trip.duration} days, chunking needed: ${tripAnalysis.needsChunking}`);
+
+      let itinerary;
+      let totalTokensUsed = 0;
       const processingTime = Date.now() - startTime;
 
-      // Process AI response using ResponseParser and fallback to templates
-      let itinerary;
-      try {
-        itinerary = this.responseParser.processItineraryResponse(response.content, trip);
-      } catch (fallbackError) {
-        if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
-          console.log('🔄 Using ActivityTemplateService for itinerary generation...');
+      if (tripAnalysis.needsChunking) {
+        // Use chunked generation for long trips
+        console.log(`🚀 Generating long trip itinerary using ${tripAnalysis.strategy}`);
+        
+        try {
+          itinerary = await this.longTripHandler.generateChunkedItinerary(trip, {
+            geminiClient: this.apiClient,
+            promptBuilder: this.promptBuilder,
+            responseParser: this.responseParser,
+            generateStandardItinerary: (trip) => this._generateStandardItinerary(trip, focus)
+          });
+          
+          // Estimate tokens for chunked generation
+          totalTokensUsed = tripAnalysis.estimatedTokens || 0;
+          
+        } catch (chunkError) {
+          console.warn('⚠️  Chunked generation failed, falling back to template service:', chunkError.message);
           itinerary = this.templateService.generateTemplateBasedItinerary(trip);
-        } else {
-          throw fallbackError;
+          totalTokensUsed = 0;
+        }
+        
+      } else {
+        // Use standard generation for normal trips
+        console.log('📄 Generating standard itinerary');
+        
+        // Prepare structured prompt using PromptBuilder
+        prompt = this.promptBuilder.buildItineraryPrompt(trip, focus);
+        
+        // Call Gemini Pro for structured output
+        const response = await this._callGeminiAPIWithFallback('pro', prompt);
+        totalTokensUsed = response.tokensUsed;
+
+        // Process AI response using ResponseParser and fallback to templates
+        try {
+          itinerary = this.responseParser.processItineraryResponse(response.content, trip);
+        } catch (fallbackError) {
+          if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
+            console.log('🔄 Using ActivityTemplateService for itinerary generation...');
+            itinerary = this.templateService.generateTemplateBasedItinerary(trip);
+          } else {
+            throw fallbackError;
+          }
         }
       }
 
@@ -144,18 +178,25 @@ class GeminiService {
         tripId,
         endpoint: 'generate-itinerary',
         model: 'pro',
-        prompt,
-        responseContent: response.content,
-        tokensUsed: response.tokensUsed,
+        prompt: tripAnalysis.needsChunking ? 'Chunked generation (multiple prompts)' : prompt,
+        responseContent: tripAnalysis.needsChunking ? 'Chunked responses combined' : 'Standard response',
+        tokensUsed: totalTokensUsed,
         processingTime,
-        success: true
+        success: true,
+        metadata: {
+          tripDuration: trip.duration,
+          chunkingUsed: tripAnalysis.needsChunking,
+          chunksGenerated: tripAnalysis.chunks?.length || 0
+        }
       });
 
       return {
         itinerary,
-        tokensUsed: response.tokensUsed,
+        tokensUsed: totalTokensUsed,
         processingTime,
-        rateLimitRemaining: rateLimitCheck.remaining - 1
+        rateLimitRemaining: rateLimitCheck.remaining - 1,
+        generationStrategy: tripAnalysis.needsChunking ? 'chunked' : 'standard',
+        chunksGenerated: tripAnalysis.chunks?.length || 0
       };
 
     } catch (error) {
@@ -432,6 +473,32 @@ class GeminiService {
   }
 
   /**
+   * Generate standard itinerary (helper method for chunked generation)
+   * @param {Object} trip - Trip object
+   * @param {string} focus - Focus for generation
+   * @returns {Promise<Object>} Generated itinerary
+   */
+  async _generateStandardItinerary(trip, focus) {
+    // Prepare structured prompt using PromptBuilder
+    const prompt = this.promptBuilder.buildItineraryPrompt(trip, focus);
+    
+    // Call Gemini Pro for structured output
+    const response = await this._callGeminiAPIWithFallback('pro', prompt);
+
+    // Process AI response using ResponseParser and fallback to templates
+    try {
+      return this.responseParser.processItineraryResponse(response.content, trip);
+    } catch (fallbackError) {
+      if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
+        console.log('🔄 Using ActivityTemplateService for standard itinerary generation...');
+        return this.templateService.generateTemplateBasedItinerary(trip);
+      } else {
+        throw fallbackError;
+      }
+    }
+  }
+
+  /**
    * Private method to log AI interactions
    * @param {Object} logData - Log data
    */
@@ -459,8 +526,10 @@ class GeminiService {
         apiClient: this.apiClient.hasValidApiKey(),
         promptBuilder: true,
         responseParser: true,
-        templateService: true
+        templateService: true,
+        longTripHandler: true
       },
+      longTripConfig: this.longTripHandler.getConfig(),
       timestamp: new Date().toISOString()
     };
   }

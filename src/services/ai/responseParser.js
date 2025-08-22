@@ -156,15 +156,238 @@ class ResponseParser {
   }
 
   /**
-   * Process optimization response
+   * Process chunked itinerary response for long trips
    * @param {string} content - AI response content
-   * @param {Object} trip - Trip object
-   * @returns {Object} Optimized schedule
+   * @param {Object} trip - Trip object (chunk-specific)
+   * @param {Object} chunk - Chunk configuration
+   * @returns {Object} Processed chunk itinerary
    */
-  processOptimizationResponse(content, trip) {
-    // For now, return the existing itinerary
-    // In a real implementation, this would parse optimization suggestions
-    return trip.itinerary;
+  processChunkedItineraryResponse(content, trip, chunk) {
+    // Try to parse real Gemini API response first
+    if (content && !content.includes('[This is a mock response') && !content.includes('Mock Gemini')) {
+      try {
+        const parsedItinerary = this._parseChunkedGeminiResponse(content, trip, chunk);
+        if (parsedItinerary && parsedItinerary.days && parsedItinerary.days.length > 0) {
+          console.log(`✅ Successfully parsed chunked Gemini response for ${chunk.id}`);
+          return parsedItinerary;
+        }
+      } catch (error) {
+        console.warn(`⚠️  Failed to parse chunked Gemini response for ${chunk.id}, using fallback:`, error.message);
+      }
+    }
+
+    // Fall back to chunk-specific template generation
+    console.log(`🔄 Using template-based generation for chunk ${chunk.id}`);
+    return this._generateChunkFallback(trip, chunk);
+  }
+
+  /**
+   * Parse chunked Gemini API response
+   * @param {string} content - Raw Gemini API response
+   * @param {Object} trip - Trip object (chunk-specific)
+   * @param {Object} chunk - Chunk configuration
+   * @returns {Object} Parsed chunk itinerary
+   */
+  _parseChunkedGeminiResponse(content, trip, chunk) {
+    const days = [];
+    const chunkDuration = chunk.endDay - chunk.startDay + 1;
+    const chunkStartDate = new Date(trip.destination.startDate);
+    
+    // Parse content similar to main parser but with chunk context
+    const lines = content.split('\n').filter(line => line.trim());
+    let currentDay = null;
+    let dayIndex = -1;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Detect day headers - may include chunk start day offset
+      const dayMatch = trimmedLine.match(/\*?\*?\s*Day\s+(\d+)/i);
+      if (dayMatch) {
+        // Save previous day if exists
+        if (currentDay && currentDay.activities.length > 0) {
+          days.push(currentDay);
+        }
+        
+        const dayNumber = parseInt(dayMatch[1]);
+        // Handle both absolute day numbers and relative day numbers
+        dayIndex = dayNumber >= chunk.startDay ? dayNumber - chunk.startDay : dayNumber - 1;
+        
+        if (dayIndex < chunkDuration && dayIndex >= 0) {
+          const dayDate = new Date(chunkStartDate);
+          dayDate.setDate(dayDate.getDate() + dayIndex);
+          
+          currentDay = {
+            date: dayDate,
+            activities: []
+          };
+        }
+        continue;
+      }
+      
+      // Extract activities with chunk-aware parsing
+      if (currentDay) {
+        const timeMatch = trimmedLine.match(/(\d{1,2}:\d{2})\s*[-:]?\s*(.+)/i);
+        if (timeMatch) {
+          const [, time, description] = timeMatch;
+          const activity = this.parseActivityFromDescription(time, description.trim(), trip);
+          
+          // Enhance activity with chunk context
+          activity.chunkInfo = {
+            chunkId: chunk.id,
+            focus: chunk.focus,
+            dayInChunk: dayIndex + 1
+          };
+          
+          currentDay.activities.push(activity);
+        } else if (trimmedLine.match(/^[-\*\u2022]\s+/)) {
+          // Handle bullet point activities
+          const description = trimmedLine.replace(/^[-\*\u2022]\s+/, '').trim();
+          if (description) {
+            const time = this._generateTimeForActivity(currentDay.activities.length);
+            const activity = this.parseActivityFromDescription(time, description, trip);
+            activity.chunkInfo = {
+              chunkId: chunk.id,
+              focus: chunk.focus,
+              dayInChunk: dayIndex + 1
+            };
+            currentDay.activities.push(activity);
+          }
+        }
+      }
+    }
+    
+    // Add the last day
+    if (currentDay && currentDay.activities.length > 0) {
+      days.push(currentDay);
+    }
+    
+    // Ensure we have the right number of days for this chunk
+    while (days.length < chunkDuration) {
+      const dayDate = new Date(chunkStartDate);
+      dayDate.setDate(dayDate.getDate() + days.length);
+      
+      days.push({
+        date: dayDate,
+        activities: this._generateChunkFallbackActivities(trip, chunk, days.length + 1)
+      });
+    }
+    
+    return { days: days.slice(0, chunkDuration) };
+  }
+
+  /**
+   * Generate fallback itinerary for a chunk
+   * @param {Object} trip - Trip object
+   * @param {Object} chunk - Chunk configuration
+   * @returns {Object} Fallback chunk itinerary
+   */
+  _generateChunkFallback(trip, chunk) {
+    const days = [];
+    const chunkDuration = chunk.endDay - chunk.startDay + 1;
+    const chunkStartDate = new Date(trip.destination.startDate);
+    
+    for (let i = 0; i < chunkDuration; i++) {
+      const dayDate = new Date(chunkStartDate);
+      dayDate.setDate(dayDate.getDate() + i);
+      
+      days.push({
+        date: dayDate,
+        activities: this._generateChunkFallbackActivities(trip, chunk, i + 1)
+      });
+    }
+    
+    return { days };
+  }
+
+  /**
+   * Generate fallback activities for a specific chunk day
+   * @param {Object} trip - Trip object
+   * @param {Object} chunk - Chunk configuration
+   * @param {number} dayInChunk - Day number within chunk
+   * @returns {Array} Fallback activities
+   */
+  _generateChunkFallbackActivities(trip, chunk, dayInChunk) {
+    const activities = [];
+    const baseActivities = this._getChunkFocusActivities(chunk.focus, trip.destination.destination);
+    const activitiesPerDay = chunk.detailLevel === 'comprehensive' ? 4 : 
+                            chunk.detailLevel === 'balanced' ? 3 : 2;
+    
+    for (let i = 0; i < activitiesPerDay; i++) {
+      const timeSlots = ['09:00', '11:30', '14:00', '16:30'];
+      const activityTemplate = baseActivities[i % baseActivities.length];
+      
+      activities.push({
+        time: timeSlots[i],
+        title: `${activityTemplate.title} (Day ${chunk.startDay + dayInChunk - 1})`,
+        description: activityTemplate.description,
+        location: {
+          name: activityTemplate.location || trip.destination.destination,
+          address: `${activityTemplate.location || trip.destination.destination}, ${trip.destination.destination}`,
+          coordinates: this._generateCoordinates(trip.destination.destination)
+        },
+        duration: activityTemplate.duration || 120,
+        cost: activityTemplate.cost || 0,
+        category: activityTemplate.category || 'cultural',
+        notes: `Fallback activity for chunk ${chunk.id}`,
+        chunkInfo: {
+          chunkId: chunk.id,
+          focus: chunk.focus,
+          dayInChunk: dayInChunk
+        }
+      });
+    }
+    
+    return activities;
+  }
+
+  /**
+   * Get focus-specific activity templates
+   * @param {string} focus - Chunk focus
+   * @param {string} destination - Destination name
+   * @returns {Array} Activity templates
+   */
+  _getChunkFocusActivities(focus, destination) {
+    const activityMap = {
+      'arrival_orientation': [
+        { title: 'Airport Transfer & Check-in', description: 'Arrive and settle into accommodation', category: 'logistics', duration: 120, cost: 50 },
+        { title: 'Local Area Orientation Walk', description: 'Explore immediate neighborhood and get oriented', category: 'exploration', duration: 90, cost: 0 },
+        { title: 'Welcome Dinner', description: 'Traditional local cuisine introduction', category: 'food', duration: 120, cost: 40 },
+        { title: 'Rest and Preparation', description: 'Recover from travel and prepare for adventures ahead', category: 'leisure', duration: 60, cost: 0 }
+      ],
+      'cultural_immersion': [
+        { title: 'Historic Temple Visit', description: 'Explore ancient religious architecture and traditions', category: 'cultural', duration: 120, cost: 15 },
+        { title: 'Local Museum Tour', description: 'Learn about regional history and culture', category: 'cultural', duration: 150, cost: 20 },
+        { title: 'Traditional Craft Workshop', description: 'Hands-on experience with local artisans', category: 'cultural', duration: 180, cost: 45 },
+        { title: 'Cultural Performance', description: 'Traditional music and dance show', category: 'cultural', duration: 120, cost: 30 }
+      ],
+      'local_experiences': [
+        { title: 'Local Market Exploration', description: 'Browse authentic markets and interact with vendors', category: 'cultural', duration: 120, cost: 20 },
+        { title: 'Neighborhood Walking Tour', description: 'Discover hidden gems with local guide', category: 'cultural', duration: 180, cost: 35 },
+        { title: 'Local Family Cooking Class', description: 'Learn to cook traditional dishes', category: 'food', duration: 240, cost: 60 },
+        { title: 'Community Event Participation', description: 'Join local festivities or gatherings', category: 'cultural', duration: 120, cost: 10 }
+      ],
+      'nature_exploration': [
+        { title: 'National Park Visit', description: 'Explore natural landscapes and wildlife', category: 'nature', duration: 240, cost: 25 },
+        { title: 'Scenic Hiking Trail', description: 'Moderate hike with beautiful views', category: 'nature', duration: 180, cost: 0 },
+        { title: 'Botanical Gardens Tour', description: 'Peaceful walk through curated natural spaces', category: 'nature', duration: 120, cost: 12 },
+        { title: 'Sunset Viewing Point', description: 'Watch sunset from popular viewpoint', category: 'nature', duration: 90, cost: 0 }
+      ],
+      'food_discovery': [
+        { title: 'Street Food Tour', description: 'Sample diverse local street food', category: 'food', duration: 180, cost: 35 },
+        { title: 'Fine Dining Experience', description: 'High-end restaurant showcasing regional cuisine', category: 'food', duration: 150, cost: 80 },
+        { title: 'Food Market Exploration', description: 'Browse and taste at local food markets', category: 'food', duration: 120, cost: 25 },
+        { title: 'Cooking Class', description: 'Learn to prepare signature local dishes', category: 'food', duration: 180, cost: 55 }
+      ],
+      'departure_logistics': [
+        { title: 'Souvenir Shopping', description: 'Final shopping for gifts and mementos', category: 'shopping', duration: 120, cost: 50 },
+        { title: 'Packing and Check-out', description: 'Prepare for departure', category: 'logistics', duration: 90, cost: 0 },
+        { title: 'Airport Transfer', description: 'Travel to airport for departure', category: 'logistics', duration: 60, cost: 30 },
+        { title: 'Final Local Meal', description: 'Last taste of local cuisine', category: 'food', duration: 60, cost: 25 }
+      ]
+    };
+    
+    return activityMap[focus] || activityMap['cultural_immersion'];
   }
 
   /**

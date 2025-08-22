@@ -96,6 +96,27 @@ Focus on authentic local experiences and practical recommendations.`
   }
 
   /**
+   * Build chunked itinerary generation prompt for long trips
+   * @param {Object} trip - Trip object (modified for chunk)
+   * @param {Object} chunk - Chunk configuration
+   * @param {Object} context - Generation context
+   * @returns {string} Formatted prompt for chunk
+   */
+  buildChunkedItineraryPrompt(trip, chunk, context) {
+    let prompt = `You are a professional travel planner creating a detailed itinerary segment for a longer trip.\n\n`;
+    
+    prompt += this._buildChunkedTripDetails(trip, chunk, context);
+    
+    prompt += `\n**Chunk-Specific Instructions:**\n`;
+    prompt += this._getChunkInstructions(chunk, context);
+    
+    prompt += `\n**Format Requirements:**\n`;
+    prompt += this._getChunkedFormat(chunk);
+    
+    return prompt;
+  }
+
+  /**
    * Build optimization prompt
    * @param {Object} trip - Trip object
    * @param {string} focus - Optimization focus
@@ -223,6 +244,124 @@ Focus on authentic local experiences and practical recommendations.`
     }
     
     return details;
+  }
+
+  /**
+   * Build chunked trip details
+   * @param {Object} trip - Trip object
+   * @param {Object} chunk - Chunk configuration
+   * @param {Object} context - Generation context
+   * @returns {string} Formatted trip details for chunk
+   */
+  _buildChunkedTripDetails(trip, chunk, context) {
+    let details = `**Trip Segment Details:**\n`;
+    details += `- Overall Destination: ${trip.destination.destination}\n`;
+    details += `- Segment: Days ${chunk.startDay}-${chunk.endDay} (${trip.duration} days total)\n`;
+    details += `- Focus: ${chunk.focus.replace('_', ' ')}\n`;
+    details += `- Detail Level: ${chunk.detailLevel}\n`;
+    details += `- Travelers: ${trip.travelers.adults} adults`;
+    
+    if (trip.travelers.children > 0) {
+      details += `, ${trip.travelers.children} children`;
+    }
+    if (trip.travelers.infants > 0) {
+      details += `, ${trip.travelers.infants} infants`;
+    }
+    details += `\n`;
+    
+    if (trip.budget && trip.budget.total) {
+      const chunkBudget = Math.floor(trip.budget.total / trip.duration * (chunk.endDay - chunk.startDay + 1));
+      details += `- Budget for this segment: ~$${chunkBudget} USD\n`;
+    }
+    
+    if (trip.preferences && trip.preferences.interests && trip.preferences.interests.length > 0) {
+      details += `- Interests: ${trip.preferences.interests.join(', ')}\n`;
+    }
+    
+    if (context.previousDays && context.previousDays.length > 0) {
+      details += `\n**Context from Previous Days:**\n`;
+      context.previousDays.forEach((day, index) => {
+        const dayNum = chunk.startDay - context.previousDays.length + index;
+        details += `Day ${dayNum}: ${day.activities.map(a => a.title).join(', ')}\n`;
+      });
+    }
+    
+    return details;
+  }
+
+  /**
+   * Get chunk-specific instructions
+   * @param {Object} chunk - Chunk configuration
+   * @param {Object} context - Generation context
+   * @returns {string} Chunk instructions
+   */
+  _getChunkInstructions(chunk, context) {
+    let instructions = '';
+    
+    switch (chunk.detailLevel) {
+      case 'comprehensive':
+        instructions += '- Provide detailed descriptions and specific recommendations\n';
+        instructions += '- Include practical tips and insider information\n';
+        instructions += '- Focus on must-see attractions and experiences\n';
+        break;
+      case 'balanced':
+        instructions += '- Provide good detail while maintaining variety\n';
+        instructions += '- Balance popular attractions with local experiences\n';
+        instructions += '- Consider travel logistics between activities\n';
+        break;
+      case 'simplified':
+        instructions += '- Focus on essential activities and departure logistics\n';
+        instructions += '- Keep descriptions concise but practical\n';
+        instructions += '- Prioritize convenience and efficiency\n';
+        break;
+    }
+    
+    if (chunk.focus) {
+      const focusMap = {
+        'arrival_orientation': 'Focus on arrival logistics, orientation, and settling in',
+        'cultural_immersion': 'Emphasize cultural sites, museums, and heritage experiences',
+        'local_experiences': 'Highlight authentic local activities and hidden gems',
+        'nature_exploration': 'Prioritize outdoor activities, parks, and natural attractions',
+        'food_discovery': 'Focus on culinary experiences and local cuisine',
+        'historical_sites': 'Emphasize historical landmarks and educational experiences',
+        'entertainment_leisure': 'Include entertainment, nightlife, and leisure activities',
+        'departure_logistics': 'Focus on departure preparation and last-minute activities'
+      };
+      
+      instructions += `- ${focusMap[chunk.focus] || chunk.focus}\n`;
+    }
+    
+    if (context.previousDays && context.previousDays.length > 0) {
+      instructions += '- Ensure continuity with previous days mentioned in context\n';
+      instructions += '- Avoid repeating similar activities from previous days\n';
+    }
+    
+    return instructions;
+  }
+
+  /**
+   * Get format requirements for chunked generation
+   * @param {Object} chunk - Chunk configuration
+   * @returns {string} Format requirements
+   */
+  _getChunkedFormat(chunk) {
+    return `Create a detailed itinerary with the following format:
+
+Day ${chunk.startDay}: [Date]
+09:00 - [Activity Name] at [Specific Location]
+11:30 - [Activity Name] at [Specific Location] 
+14:00 - [Activity Name] at [Specific Location]
+16:30 - [Activity Name] at [Specific Location]
+
+${chunk.endDay > chunk.startDay ? `Day ${chunk.endDay}: [Date]
+[Continue same format...]` : ''}
+
+For each activity, include:
+- Specific venue names and realistic locations
+- Brief but informative descriptions
+- Consider travel time and practical logistics
+- Mix activities according to the specified focus
+- Ensure timing is realistic and achievable`;
   }
 
   /**
