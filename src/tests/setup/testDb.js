@@ -14,8 +14,9 @@ const setupTestDB = async () => {
     
     // Connect mongoose to the in-memory database
     await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+      bufferCommands: false, // Disable mongoose buffering
+      bufferMaxEntries: 0,   // Disable mongoose buffering
+      maxPoolSize: 1         // Limit connection pool size
     });
     
     console.log('✅ Connected to in-memory MongoDB for testing');
@@ -28,19 +29,25 @@ const setupTestDB = async () => {
 // Cleanup function to stop MongoDB Memory Server
 const teardownTestDB = async () => {
   try {
-    // Close mongoose connections
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
+    // Close all mongoose connections
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.dropDatabase();
+      await mongoose.connection.close();
+    }
+    
+    // Close any additional connections
+    await mongoose.disconnect();
     
     // Stop the MongoDB Memory Server
     if (mongoServer) {
       await mongoServer.stop();
+      mongoServer = null;
     }
     
     console.log('✅ Test database cleaned up');
   } catch (error) {
     console.error('❌ Error tearing down test database:', error);
-    throw error;
+    // Don't throw error in cleanup to avoid masking test errors
   }
 };
 

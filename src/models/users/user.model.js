@@ -48,7 +48,8 @@ const userSchema = new mongoose.Schema({
   },
   googleId: {
     type: String,
-    sparse: true
+    sparse: true,
+    index: true
   },
   twoFactorEnabled: {
     type: Boolean,
@@ -179,8 +180,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for performance
-userSchema.index({ email: 1 });
-userSchema.index({ googleId: 1 });
 userSchema.index({ phoneNumber: 1 });
 
 // Hash password before saving

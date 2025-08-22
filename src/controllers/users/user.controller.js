@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const { userService } = require('../../services/users');
 const { responseService } = require('../../services/common');
 const config = require('../../config/config');
+const logger = require('../../config/logger');
 
 // Import rate limiters from middleware
 const {
@@ -31,11 +32,21 @@ const register = async (req, res) => {
     // Register user using service
     const result = await userService.registerUser({ email, password, firstName, lastName });
 
-    console.log(`User registered successfully: ${result.user.email}`);
+    logger.info('User registered successfully', {
+      userId: result.user._id,
+      email: result.user.email,
+      method: 'email',
+      timestamp: new Date().toISOString()
+    });
     
     responseService.sendAuthResponse(res, result, 'User registered successfully', 201);
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error('User registration error', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body.email,
+      timestamp: new Date().toISOString()
+    });
     responseService.handleServiceError(res, error, 'Server error');
   }
 };
@@ -55,11 +66,21 @@ const login = async (req, res) => {
     // Login user using service
     const result = await userService.loginUser({ email, password });
 
-    console.log(`User logged in successfully: ${result.user.email}`);
+    logger.info('User login successful', {
+      userId: result.user._id,
+      email: result.user.email,
+      method: 'email',
+      timestamp: new Date().toISOString()
+    });
     
     responseService.sendAuthResponse(res, result, 'Login successful');
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('User login error', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body.email,
+      timestamp: new Date().toISOString()
+    });
     responseService.handleServiceError(res, error, 'Server error');
   }
 };
@@ -73,11 +94,20 @@ const getProfile = async (req, res) => {
     // Get user profile using service
     const userProfile = await userService.getUserProfile(userId);
     
-    console.log(`Profile retrieved for user: ${userProfile.email}`);
+    logger.info('User profile retrieved', {
+      userId: userProfile._id,
+      email: userProfile.email,
+      timestamp: new Date().toISOString()
+    });
     
     responseService.sendSuccess(res, { user: userProfile });
   } catch (error) {
-    console.error('Get profile error:', error);
+    logger.error('Get user profile error', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user.userId,
+      timestamp: new Date().toISOString()
+    });
     responseService.handleServiceError(res, error, 'Server error');
   }
 };
