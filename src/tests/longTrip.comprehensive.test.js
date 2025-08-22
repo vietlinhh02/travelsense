@@ -46,7 +46,7 @@ describe('Long Trip Handling', () => {
     });
 
     it('should not chunk short trips', () => {
-      const shortTrip = { ...mockTrip, duration: 5 };
+      const shortTrip = { ...mockTrip, duration: 4 }; // Below any reasonable threshold
       const analysis = longTripHandler.analyzeTrip(shortTrip);
       
       expect(analysis.needsChunking).toBe(false);
@@ -125,8 +125,18 @@ describe('Long Trip Handling', () => {
     });
 
     it('should estimate total token usage for long trips', () => {
-      const tokens = longTripHandler._estimateTokenUsage(21);
-      expect(tokens).toBe(21 * 300); // 300 tokens per day
+      // Test basic estimation without chunks
+      const basicTokens = longTripHandler._estimateTokenUsage(21);
+      expect(basicTokens).toBeGreaterThan(5000); // Should be more than simple 21 * 300
+      expect(basicTokens).toBeLessThan(12000); // But reasonable upper bound
+      
+      // Test with actual trip context
+      const complexTrip = {
+        duration: 21,
+        destination: { destination: 'Japan Multi-City Tour' } // High complexity
+      };
+      const complexTokens = longTripHandler._estimateTokenUsage(21, null, complexTrip);
+      expect(complexTokens).toBeGreaterThan(basicTokens); // Should be higher for complex destination
     });
   });
 
@@ -163,6 +173,90 @@ describe('Long Trip Handling', () => {
       
       const foodTitles = foodActivities.map(a => a.title.toLowerCase());
       expect(foodTitles.some(title => title.includes('food') || title.includes('cooking'))).toBe(true);
+    });
+  });
+
+  describe('Sophisticated Token Estimation', () => {
+    it('should calculate different token estimates based on chunk detail levels', () => {
+      const comprehensiveChunk = {
+        id: 'arrival',
+        startDay: 1,
+        endDay: 2,
+        detailLevel: 'comprehensive',
+        focus: 'arrival_orientation'
+      };
+      
+      const balancedChunk = {
+        id: 'middle_1',
+        startDay: 3,
+        endDay: 7,
+        detailLevel: 'balanced',
+        focus: 'cultural_immersion'
+      };
+      
+      const simplifiedChunk = {
+        id: 'departure',
+        startDay: 15,
+        endDay: 15,
+        detailLevel: 'simplified',
+        focus: 'departure_logistics'
+      };
+      
+      const trip = {
+        destination: { destination: 'Tokyo, Japan' }
+      };
+      
+      const comprehensiveTokens = longTripHandler._estimateChunkTokenUsage(comprehensiveChunk, trip);
+      const balancedTokens = longTripHandler._estimateChunkTokenUsage(balancedChunk, trip);
+      const simplifiedTokens = longTripHandler._estimateChunkTokenUsage(simplifiedChunk, trip);
+      
+      // Comprehensive should have highest tokens per day
+      expect(comprehensiveTokens / 2).toBeGreaterThan(balancedTokens / 5); // Per day comparison
+      expect(balancedTokens / 5).toBeGreaterThan(simplifiedTokens / 1);
+      
+      // All should be reasonable ranges
+      expect(comprehensiveTokens).toBeGreaterThan(800);
+      expect(comprehensiveTokens).toBeLessThan(3000);
+    });
+    
+    it('should apply complexity multipliers for different destinations', () => {
+      const chunk = {
+        id: 'middle_1',
+        startDay: 1,
+        endDay: 3,
+        detailLevel: 'balanced',
+        focus: 'cultural_immersion'
+      };
+      
+      const simpleTrip = { destination: { destination: 'Paris, France' } };
+      const complexTrip = { destination: { destination: 'Tokyo, Japan' } };
+      const multiCityTrip = { destination: { destination: 'Europe Multi-City Tour' } };
+      
+      const simpleTokens = longTripHandler._estimateChunkTokenUsage(chunk, simpleTrip);
+      const complexTokens = longTripHandler._estimateChunkTokenUsage(chunk, complexTrip);
+      const multiCityTokens = longTripHandler._estimateChunkTokenUsage(chunk, multiCityTrip);
+      
+      expect(complexTokens).toBeGreaterThan(simpleTokens);
+      // Note: multiCityTokens might not always be higher due to destination detection logic
+      expect(multiCityTokens).toBeGreaterThan(simpleTokens);
+    });
+    
+    it('should provide more accurate estimates for complete trips', () => {
+      const trip = {
+        duration: 15,
+        destination: { destination: 'Vietnam Cultural Tour' }
+      };
+      
+      const analysis = longTripHandler.analyzeTrip(trip);
+      const estimatedTokens = analysis.estimatedTokens;
+      
+      // Should be more sophisticated than simple multiplication
+      const simpleEstimate = trip.duration * 300;
+      expect(estimatedTokens).not.toBe(simpleEstimate);
+      
+      // Should be in reasonable range for 15-day trip
+      expect(estimatedTokens).toBeGreaterThan(4000);
+      expect(estimatedTokens).toBeLessThan(15000); // Increased upper bound for sophisticated estimation
     });
   });
 

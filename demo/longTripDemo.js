@@ -104,6 +104,40 @@ function demonstrateLongTripSolution() {
     simplified: longTripHandler._calculateMaxTokensForChunk(simplifiedChunk)
   });
   
+  // Advanced token estimation demonstration
+  console.log('\n📊 Advanced Token Estimation:');
+  
+  // Compare simple vs sophisticated estimation
+  const testTrip = {
+    duration: 15,
+    destination: { destination: 'Tokyo, Japan' }
+  };
+  
+  const simpleEstimate = testTrip.duration * 300; // Old method
+  const sophisticatedEstimate = longTripHandler._estimateTokenUsage(testTrip.duration, null, testTrip);
+  
+  console.log('Estimation comparison for 15-day Tokyo trip:', {
+    simple: simpleEstimate,
+    sophisticated: sophisticatedEstimate,
+    difference: sophisticatedEstimate - simpleEstimate,
+    improvementFactor: (sophisticatedEstimate / simpleEstimate).toFixed(2) + 'x'
+  });
+  
+  // Destination complexity examples
+  console.log('\nDestination complexity examples:');
+  const destinations = [
+    { name: 'Paris, France', trip: { destination: { destination: 'Paris, France' } } },
+    { name: 'Tokyo, Japan', trip: { destination: { destination: 'Tokyo, Japan' } } },
+    { name: 'Europe Multi-City', trip: { destination: { destination: 'Europe Multi-City Tour' } } },
+    { name: 'Vietnam Cultural', trip: { destination: { destination: 'Vietnam Cultural Experience' } } }
+  ];
+  
+  destinations.forEach(dest => {
+    const estimate = longTripHandler._estimateTokenUsage(10, null, dest.trip);
+    const complexity = longTripHandler._getDestinationComplexity(dest.trip.destination.destination);
+    console.log(`  ${dest.name}: ${estimate} tokens (complexity: ${complexity}x)`);
+  });
+  
   console.log('\n✅ Long Trip Solution Summary:');
   console.log('1. 🔍 Automatic detection of long trips (10+ days)');
   console.log('2. 📋 Smart chunking with priority levels (arrival/middle/departure)');

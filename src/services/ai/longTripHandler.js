@@ -7,13 +7,13 @@ class LongTripHandler {
     // Configuration for trip segmentation
     this.config = {
       maxDaysPerChunk: 7,        // Maximum days per AI generation chunk
-      minDaysForChunking: 10,    // Minimum trip duration to trigger chunking
+      minDaysForChunking: 5,    // Minimum trip duration to trigger chunking
       maxTokensPerPrompt: 6000,  // Safe token limit per prompt
-      overlapDays: 1,            // Days of overlap between chunks for continuity
+      overlapDays: 2,            // Days of overlap between chunks for continuity
       prioritySegments: {
         arrival: 2,              // First 2 days get detailed treatment
         departure: 1,            // Last day gets simpler treatment
-        middle: 5                // Middle chunks of 5 days each
+        middle: 6              // Middle chunks of 5 days each
       }
     };
   }
@@ -38,7 +38,7 @@ class LongTripHandler {
       needsChunking: true,
       strategy: 'progressive_chunking',
       chunks: this._createChunks(duration),
-      estimatedTokens: this._estimateTokenUsage(duration)
+      estimatedTokens: this._estimateTokenUsage(duration, this._createChunks(duration), trip)
     };
   }
 
@@ -295,13 +295,148 @@ class LongTripHandler {
   }
 
   /**
-   * Estimate total token usage for long trip
+   * Estimate total token usage for long trip with sophisticated calculation
    * @param {number} duration - Trip duration
+   * @param {Array} chunks - Array of chunks (optional, for more accurate estimation)
+   * @param {Object} trip - Trip object for context (optional)
    * @returns {number} Estimated tokens
    */
-  _estimateTokenUsage(duration) {
-    const tokensPerDay = 300; // Estimated tokens per day
-    return duration * tokensPerDay;
+  _estimateTokenUsage(duration, chunks = null, trip = null) {
+    if (chunks) {
+      // Detailed estimation based on actual chunks
+      return chunks.reduce((total, chunk) => {
+        const chunkTokens = this._estimateChunkTokenUsage(chunk, trip);
+        return total + chunkTokens;
+      }, 0);
+    }
+    
+    // Fallback to improved general estimation
+    const baseTokensPerDay = 250; // Base tokens for simple day
+    const complexityMultiplier = this._getDestinationComplexity(trip?.destination?.destination);
+    const averageActivitiesPerDay = 3.5;
+    const tokensPerActivity = 80;
+    
+    const estimatedTokens = duration * (
+      baseTokensPerDay + 
+      (averageActivitiesPerDay * tokensPerActivity * complexityMultiplier)
+    );
+    
+    return Math.round(estimatedTokens);
+  }
+
+  /**
+   * Estimate token usage for a specific chunk
+   * @param {Object} chunk - Chunk configuration
+   * @param {Object} trip - Trip object for context
+   * @returns {number} Estimated tokens for chunk
+   */
+  _estimateChunkTokenUsage(chunk, trip = null) {
+    const chunkDuration = chunk.endDay - chunk.startDay + 1;
+    
+    // Base tokens per day by detail level
+    const baseTokensByDetailLevel = {
+      'comprehensive': 400, // High detail with descriptions, tips, logistics
+      'balanced': 280,      // Moderate detail with good descriptions
+      'simplified': 180     // Basic detail, essential info only
+    };
+    
+    const baseTokensPerDay = baseTokensByDetailLevel[chunk.detailLevel] || 280;
+    
+    // Activities per day by detail level
+    const activitiesPerDayByLevel = {
+      'comprehensive': 4.5, // More activities, more detail
+      'balanced': 3.5,      // Standard activities
+      'simplified': 2.5     // Fewer, simpler activities
+    };
+    
+    const activitiesPerDay = activitiesPerDayByLevel[chunk.detailLevel] || 3.5;
+    
+    // Tokens per activity by detail level
+    const tokensPerActivityByLevel = {
+      'comprehensive': 120, // Detailed descriptions, tips, logistics
+      'balanced': 85,       // Good descriptions
+      'simplified': 50      // Basic descriptions
+    };
+    
+    const tokensPerActivity = tokensPerActivityByLevel[chunk.detailLevel] || 85;
+    
+    // Focus complexity multiplier
+    const focusComplexity = this._getFocusComplexity(chunk.focus);
+    
+    // Destination complexity multiplier
+    const destinationComplexity = this._getDestinationComplexity(trip?.destination?.destination);
+    
+    // Context overhead (for continuation chunks)
+    const contextOverhead = chunk.id.startsWith('middle_') ? 50 : 0;
+    
+    // Calculate total tokens for chunk
+    const chunkTokens = chunkDuration * (
+      baseTokensPerDay + 
+      (activitiesPerDay * tokensPerActivity * focusComplexity * destinationComplexity)
+    ) + contextOverhead;
+    
+    return Math.round(chunkTokens);
+  }
+
+  /**
+   * Get complexity multiplier based on focus type
+   * @param {string} focus - Chunk focus
+   * @returns {number} Complexity multiplier
+   */
+  _getFocusComplexity(focus) {
+    const complexityMap = {
+      'arrival_orientation': 1.3,    // High complexity: logistics, orientation
+      'cultural_immersion': 1.2,     // High complexity: detailed cultural context
+      'food_discovery': 1.1,         // Medium-high: restaurant details, cuisine info
+      'historical_sites': 1.2,       // High complexity: historical context
+      'nature_exploration': 1.0,     // Medium complexity: location descriptions
+      'local_experiences': 1.1,      // Medium-high: local context needed
+      'entertainment_leisure': 0.9,  // Lower complexity: straightforward activities
+      'departure_logistics': 0.8     // Lower complexity: simple logistics
+    };
+    
+    return complexityMap[focus] || 1.0;
+  }
+
+  /**
+   * Get complexity multiplier based on destination
+   * @param {string} destination - Destination name
+   * @returns {number} Complexity multiplier
+   */
+  _getDestinationComplexity(destination) {
+    if (!destination) return 1.0;
+    
+    const destLower = destination.toLowerCase();
+    
+    // Multi-city or multi-country (highest complexity)
+    if (destLower.includes('multi') || destLower.includes('tour') ||
+        destLower.includes('several') || destLower.includes('various')) {
+      return 1.4;
+    }
+    
+    // High complexity destinations (need more context, cultural explanation)
+    if (destLower.includes('japan') || destLower.includes('tokyo') || 
+        destLower.includes('kyoto') || destLower.includes('china') ||
+        destLower.includes('india') || destLower.includes('morocco')) {
+      return 1.3;
+    }
+    
+    // Medium-high complexity (unique culture, language barriers)
+    if (destLower.includes('vietnam') || destLower.includes('thailand') ||
+        destLower.includes('korea') || destLower.includes('russia') ||
+        destLower.includes('middle east') || destLower.includes('arabia')) {
+      return 1.2;
+    }
+    
+    // Medium complexity (some cultural context needed)
+    if (destLower.includes('europe') || destLower.includes('italy') ||
+        destLower.includes('france') || destLower.includes('spain') ||
+        destLower.includes('germany') || destLower.includes('brazil')) {
+      return 1.1;
+    }
+    
+    // Default complexity for familiar destinations
+    return 1.0;
   }
 
   /**
