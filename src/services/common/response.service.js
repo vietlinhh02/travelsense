@@ -136,12 +136,21 @@ class ResponseService {
       'NO_ITINERARY_TO_OPTIMIZE': { status: 400, message: 'Trip has no itinerary to optimize' },
       'DATE_OUTSIDE_TRIP_RANGE': { status: 400, message: 'Date is outside the trip date range' },
       'AI_PROCESSING_ERROR': { status: 500, message: 'Error processing AI request' },
-      'INVALID_CONVERSATION_HISTORY': { status: 400, message: 'Invalid conversation history format' }
+      'INVALID_CONVERSATION_HISTORY': { status: 400, message: 'Invalid conversation history format' },
+      
+      // Search errors
+      'DOCUMENT_NOT_FOUND': { status: 404, message: 'Reference document not found' },
+      'SEARCH_QUERY_NOT_FOUND': { status: 404, message: 'Search query not found' },
+      'SEARCH_ACCESS_DENIED': { status: 403, message: 'Access denied to this search query' }
     };
 
     const mapping = errorMappings[error.message];
     if (mapping) {
       this.sendError(res, mapping.message, mapping.status);
+    } else if (error.message.startsWith('VALIDATION_ERROR:')) {
+      // Handle validation errors with custom messages
+      const validationMessage = error.message.replace('VALIDATION_ERROR: ', '');
+      this.sendError(res, validationMessage, 400);
     } else {
       console.error('Unhandled service error:', error);
       this.sendError(res, defaultMessage, 500);

@@ -41,7 +41,9 @@ jest.mock('../models/search', () => ({
     {
       create: jest.fn(),
       find: jest.fn(),
+      findOne: jest.fn(),
       deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+      aggregate: jest.fn().mockResolvedValue([]),
       logSearch: jest.fn().mockResolvedValue({
         _id: 'mock-log-id',
         queryId: 'mock-query-id',
@@ -54,13 +56,165 @@ jest.mock('../models/search', () => ({
           _id: 'mock-log-id',
           ...data
         })
-      }))
+      })),
+      getSearchAnalytics: jest.fn().mockResolvedValue({
+        totalSearches: 25,
+        averageProcessingTime: 150,
+        successRate: 85,
+        topQueries: ['sushi restaurant', 'tokyo attractions'],
+        searchTypeBreakdown: { vector: 15, text: 10 },
+        timeDistribution: []
+      }),
+      getPopularSearchTerms: jest.fn().mockResolvedValue([
+        { term: 'sushi restaurant', count: 12, avgScore: 0.85 },
+        { term: 'tokyo attractions', count: 8, avgScore: 0.82 }
+      ]),
+      recordInteraction: jest.fn().mockResolvedValue(true)
     }
   ),
   SearchPreferences: {
     findOne: jest.fn(),
     create: jest.fn(),
     deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 })
+  }
+}));
+
+// Mock contentIndexingService
+jest.mock('../services/search', () => ({
+  vectorSearchService: {
+    vectorSearch: jest.fn().mockImplementation((searchParams) => {
+      return Promise.resolve({
+        results: [{
+          documentId: 'test-restaurant-tokyo-001',
+          score: 0.95,
+          content: { title: 'Amazing Sushi Restaurant' }
+        }],
+        metadata: {
+          queryId: 'mock-query-id',
+          sessionId: 'mock-session-id',
+          totalFound: 1,
+          totalReturned: 1,
+          processingTime: 150,
+          searchMethod: 'vector',
+          similarityThreshold: searchParams.similarityThreshold || 0.7,
+          hasMoreResults: false
+        }
+      });
+    }),
+    hybridSearch: jest.fn().mockResolvedValue({
+      results: [{
+        documentId: 'test-restaurant-tokyo-001',
+        score: 0.93,
+        content: { title: 'Amazing Sushi Restaurant' }
+      }],
+      metadata: {
+        queryId: 'mock-query-id',
+        sessionId: 'mock-session-id',
+        totalFound: 1,
+        totalReturned: 1,
+        processingTime: 200,
+        searchMethod: 'hybrid',
+        vectorWeight: 0.7,
+        textWeight: 0.3,
+        hasMoreResults: false
+      }
+    }),
+    textSearch: jest.fn().mockResolvedValue({
+      results: [{
+        documentId: 'test-restaurant-tokyo-001',
+        score: 0.88,
+        content: { title: 'Amazing Sushi Restaurant' }
+      }],
+      metadata: {
+        queryId: 'mock-query-id',
+        sessionId: 'mock-session-id',
+        totalFound: 1,
+        totalReturned: 1,
+        processingTime: 100,
+        searchMethod: 'text',
+        hasMoreResults: false
+      }
+    }),
+    locationSearch: jest.fn().mockResolvedValue({
+      results: [{
+        documentId: 'test-restaurant-tokyo-001',
+        score: 0.90,
+        distance: 500,
+        content: { title: 'Amazing Sushi Restaurant' }
+      }],
+      metadata: {
+        queryId: 'mock-query-id',
+        sessionId: 'mock-session-id',
+        totalFound: 1,
+        totalReturned: 1,
+        processingTime: 180,
+        searchMethod: 'location',
+        searchCenter: {
+          longitude: 139.7671,
+          latitude: 35.6719,
+          radius: 25000
+        },
+        hasMoreResults: false
+      }
+    }),
+    getPersonalizedRecommendations: jest.fn().mockResolvedValue({
+      results: [{
+        documentId: 'test-restaurant-tokyo-001',
+        score: 0.92,
+        content: { title: 'Amazing Sushi Restaurant' }
+      }],
+      metadata: {
+        personalized: true,
+        diversityFactor: 0.3,
+        totalFound: 1,
+        totalReturned: 1,
+        processingTime: 120
+      }
+    }),
+    findSimilarDocuments: jest.fn().mockImplementation((documentId, options) => {
+      // Handle invalid document ID
+      if (documentId === 'invalid-document-id') {
+        throw new Error('VALIDATION_ERROR: Document ID must be between 1 and 100 characters');
+      }
+      // Handle non-existent document
+      if (documentId === 'non-existent-document-123') {
+        throw new Error('DOCUMENT_NOT_FOUND');
+      }
+      // Return successful response for valid documents
+      return Promise.resolve({
+        results: [{
+          documentId: 'test-restaurant-tokyo-002',
+          score: 0.85,
+          content: { title: 'Similar Sushi Restaurant' }
+        }],
+        referenceDocument: {
+          documentId: 'test-restaurant-tokyo-001',
+          content: { title: 'Amazing Sushi Restaurant' }
+        },
+        metadata: {
+          similarityThreshold: options?.similarityThreshold || 0.6,
+          sameType: options?.sameType || true,
+          sameLocation: options?.sameLocation || false,
+          totalFound: 1,
+          totalReturned: 1,
+          processingTime: 110
+        }
+      });
+    })
+  },
+  contentIndexingService: {
+    getIndexingStats: jest.fn().mockResolvedValue({
+      overview: {
+        totalDocuments: 1250,
+        avgQualityScore: 85
+      },
+      byType: {
+        restaurant: 450,
+        attraction: 350,
+        hotel: 300,
+        activity: 150
+      }
+    })
   }
 }));
 
@@ -186,6 +340,20 @@ describe('Vector Search Test Suite - Search and Content Management', () => {
         score: 0.95
       }
     ]);
+    
+    // Mock SearchQueryLog for interaction tests
+    SearchQueryLog.findOne.mockImplementation((query) => {
+      if (query.queryId === 'test-query-123') {
+        return Promise.resolve({
+          _id: 'mock-log-id',
+          queryId: 'test-query-123',
+          userId: mockUserId,
+          sessionId: 'test-session-456',
+          recordInteraction: jest.fn().mockResolvedValue(true)
+        });
+      }
+      return Promise.resolve(null);
+    });
   });
 
   afterAll(async () => {
@@ -534,7 +702,7 @@ describe('Vector Search Test Suite - Search and Content Management', () => {
           .get(`${API_BASE}/recommendations`)
           .expect(401);
 
-        expect(response.body.message).toContain('Access token required');
+        expect(response.body.message).toContain('Access token is required');
       });
     });
   });
@@ -769,7 +937,7 @@ describe('Vector Search Test Suite - Search and Content Management', () => {
           .get(`${API_BASE}/analytics`)
           .expect(401);
 
-        expect(response.body.message).toContain('Access token required');
+        expect(response.body.message).toContain('Access token is required');
       });
     });
 

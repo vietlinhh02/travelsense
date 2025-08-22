@@ -167,6 +167,16 @@ describe('AI Service Test Suite - AI Integration and Rate Limiting', () => {
       _id: '507f1f77bcf86cd799439012',
       ...validTripData,
       userId: mockUserId,
+      itinerary: {
+        days: [] // Empty itinerary for generate-itinerary tests
+      },
+      get duration() {
+        // Calculate duration from start and end dates
+        const startDate = new Date(this.destination.startDate);
+        const endDate = new Date(this.destination.endDate);
+        const timeDiff = endDate.getTime() - startDate.getTime();
+        return Math.ceil(timeDiff / (1000 * 3600 * 24));
+      },
       isOwnedBy: jest.fn().mockImplementation((userId) => {
         return mockUserId === userId;
       }),
@@ -175,7 +185,14 @@ describe('AI Service Test Suite - AI Integration and Rate Limiting', () => {
     
     // Setup mock responses
     User.findById.mockResolvedValue(testUser);
-    Trip.findById.mockResolvedValue(testTrip);
+    Trip.findById.mockImplementation((tripId) => {
+      // Return testTrip only for the specific test trip ID
+      if (tripId.toString() === testTrip._id.toString()) {
+        return Promise.resolve(testTrip);
+      }
+      // Return null for non-existent trip IDs
+      return Promise.resolve(null);
+    });
   });
 
   afterAll(async () => {
@@ -277,7 +294,7 @@ describe('AI Service Test Suite - AI Integration and Rate Limiting', () => {
           .send(chatData)
           .expect(401);
 
-        expect(response.body.message).toContain('Access token required');
+        expect(response.body.message).toContain('Access token is required');
       });
 
       it('should return 401 when invalid authorization token is provided', async () => {
@@ -417,7 +434,7 @@ describe('AI Service Test Suite - AI Integration and Rate Limiting', () => {
           .send()
           .expect(401);
 
-        expect(response.body.message).toContain('Access token required');
+        expect(response.body.message).toContain('Access token is required');
       });
     });
 
@@ -731,7 +748,7 @@ describe('AI Service Test Suite - AI Integration and Rate Limiting', () => {
           .get(`${API_BASE}/rate-limits`)
           .expect(401);
 
-        expect(response.body.message).toContain('Access token required');
+        expect(response.body.message).toContain('Access token is required');
       });
     });
   });

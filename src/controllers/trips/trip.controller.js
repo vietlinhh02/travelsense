@@ -39,6 +39,13 @@ const createTrip = async (req, res) => {
 // Get User Trips
 const getUserTrips = async (req, res) => {
   try {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array()[0];
+      return responseService.sendError(res, firstError.msg, 400);
+    }
+
     // User ID comes from JWT token (set by authenticateToken middleware)
     const userId = req.user.userId;
 
@@ -68,6 +75,13 @@ const getUserTrips = async (req, res) => {
 // Get Trip Details
 const getTripDetails = async (req, res) => {
   try {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array()[0];
+      return responseService.sendError(res, firstError.msg, 400);
+    }
+
     // User ID comes from JWT token (set by authenticateToken middleware)
     const userId = req.user.userId;
 
@@ -126,6 +140,13 @@ const updateTrip = async (req, res) => {
 // Delete Trip
 const deleteTrip = async (req, res) => {
   try {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array()[0];
+      return responseService.sendError(res, firstError.msg, 400);
+    }
+
     // User ID comes from JWT token (set by authenticateToken middleware)
     const userId = req.user.userId;
 

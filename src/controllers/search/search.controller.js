@@ -332,6 +332,13 @@ const recordInteraction = async (req, res) => {
 // Get Search Analytics
 const getSearchAnalytics = async (req, res) => {
   try {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array()[0];
+      return responseService.sendError(res, firstError.msg, 400);
+    }
+
     // User ID comes from JWT token
     const userId = req.user.userId;
 
@@ -363,6 +370,13 @@ const getSearchAnalytics = async (req, res) => {
 // Get Popular Search Terms
 const getPopularSearchTerms = async (req, res) => {
   try {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array()[0];
+      return responseService.sendError(res, firstError.msg, 400);
+    }
+
     const {
       limit = 20,
       timeframe = 7
