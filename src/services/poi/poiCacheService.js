@@ -195,7 +195,9 @@ class POICacheService {
         const topResult = searchResult.results[0];
         
         // Get detailed information for the top result
-        const detailsResult = await this.foursquareClient.getPlaceDetails(topResult.fsq_id);
+        // Use fsq_place_id (new field name) with fallback to fsq_id for compatibility
+        const placeId = topResult.fsq_place_id || topResult.fsq_id;
+        const detailsResult = await this.foursquareClient.getPlaceDetails(placeId);
         
         return {
           search_result: searchResult,
@@ -212,28 +214,34 @@ class POICacheService {
   }
 
   /**
-   * Fetch data from TripAdvisor API
+   * Fetch data from TripAdvisor API using the improved workflow
    * @param {Object} searchParams - Search parameters
    * @returns {Promise<Object|null>} TripAdvisor data or null
    */
   async _fetchFromTripAdvisor(searchParams) {
     try {
-      const searchResult = await this.tripAdvisorClient.searchLocations(searchParams);
+      // Use the new findAndGetVenueDetails method which combines search + details in one call
+      const completeResult = await this.tripAdvisorClient.findAndGetVenueDetails(searchParams);
       
-      if (searchResult.results && searchResult.results.length > 0) {
-        const topResult = searchResult.results[0];
-        
-        // Get additional data for the top result
-        const [detailsResult, reviewsResult] = await Promise.allSettled([
-          this.tripAdvisorClient.getLocationDetails(topResult.location_id),
-          this.tripAdvisorClient.getLocationReviews(topResult.location_id, 5)
-        ]);
+      if (completeResult) {
+        // Get additional reviews for the venue
+        const reviewsResult = await this.tripAdvisorClient.getLocationReviews(completeResult.location_id, 5)
+          .catch(error => {
+            console.warn(`⚠️ Failed to get reviews for ${completeResult.name}:`, error.message);
+            return null;
+          });
 
         return {
-          search_result: searchResult,
-          details: detailsResult.status === 'fulfilled' ? detailsResult.value : null,
-          reviews: reviewsResult.status === 'fulfilled' ? reviewsResult.value : null,
-          source: searchResult.source
+          search_result: {
+            query: searchParams.query,
+            near: searchParams.near,
+            total: 1,
+            results: [completeResult],
+            source: 'tripadvisor'
+          },
+          details: completeResult,
+          reviews: reviewsResult,
+          source: completeResult.source
         };
       }
       
@@ -288,6 +296,14 @@ class POICacheService {
       merged.coordinates = {
         latitude: parseFloat(tripAdvisorData.details.latitude),
         longitude: parseFloat(tripAdvisorData.details.longitude)
+      };
+    }
+
+    // Create GeoJSON location for MongoDB geospatial queries
+    if (merged.coordinates) {
+      merged.location = {
+        type: 'Point',
+        coordinates: [merged.coordinates.longitude, merged.coordinates.latitude] // [lng, lat] format for MongoDB
       };
     }
 
