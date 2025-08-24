@@ -1,8 +1,7 @@
-const { POICacheService } = require('../poi');
 
 /**
  * LongTripHandler - Handles very long trip durations with smart segmentation
- * Responsible for: Trip chunking, progressive generation, token optimization, detail preservation, POI enrichment
+ * Responsible for: Trip chunking, progressive generation, token optimization, detail preservation
  */
 class LongTripHandler {
   constructor() {
@@ -16,16 +15,9 @@ class LongTripHandler {
         arrival: 2,              // First 2 days get detailed treatment
         departure: 1,            // Last day gets simpler treatment
         middle: 6              // Middle chunks of 5 days each
-      },
-      poi: {
-        enableEnrichment: true,  // Enable POI enrichment
-        enrichAfterGeneration: true, // Enrich after AI generation
-        maxPoisPerChunk: 10      // Limit POIs per chunk for performance
       }
     };
     
-    // Initialize POI Cache Service
-    this.poiCacheService = new POICacheService();
   }
 
   /**
@@ -132,28 +124,17 @@ class LongTripHandler {
   }
 
   /**
-   * Generate itinerary using chunked approach with POI enrichment
+   * Generate itinerary using chunked approach
    * @param {Object} trip - Trip object
    * @param {Object} aiServices - AI service dependencies
-   * @returns {Promise<Object>} Complete enriched itinerary
+   * @returns {Promise<Object>} Complete itinerary
    */
   async generateChunkedItinerary(trip, aiServices) {
     const analysis = this.analyzeTrip(trip);
     
     if (!analysis.needsChunking) {
-      // Use standard generation for short trips, then enrich
-      const standardItinerary = await aiServices.generateStandardItinerary(trip);
-      
-      if (this.config.poi.enableEnrichment && standardItinerary.days) {
-        console.log(' Enriching standard itinerary with POI data');
-        const tripContext = this._createTripContext(trip);
-        const allActivities = this._extractActivitiesFromDays(standardItinerary.days);
-        const enrichedActivities = await this.poiCacheService.enrichActivities(allActivities, tripContext);
-        const enrichedDays = this._mapActivitiesBackToDays(standardItinerary.days, enrichedActivities);
-        return { ...standardItinerary, days: enrichedDays };
-      }
-      
-      return standardItinerary;
+      // Use standard generation for short trips
+      return await aiServices.generateStandardItinerary(trip);
     }
 
     console.log(` Generating long trip itinerary in ${analysis.chunks.length} chunks`);
@@ -178,14 +159,7 @@ class LongTripHandler {
           aiServices
         );
         
-        // Enrich POI data for this chunk if enabled
-        let enrichedChunkDays = chunkItinerary.days;
-        if (this.config.poi.enableEnrichment && this.config.poi.enrichAfterGeneration) {
-          console.log(` Enriching POI data for chunk: ${chunk.id}`);
-          enrichedChunkDays = await this._enrichChunkWithPOI(chunkItinerary.days, trip, chunk);
-        }
-        
-        allDays.push(...enrichedChunkDays);
+        allDays.push(...chunkItinerary.days);
         
         // Update context for next chunk
         generationContext.previousDays = allDays.slice(-this.config.overlapDays);
@@ -519,203 +493,17 @@ class LongTripHandler {
     this.config = { ...this.config, ...newConfig };
   }
 
-  /**
-   * Enrich a chunk's days with POI data
-   * @param {Array} chunkDays - Days from the chunk
-   * @param {Object} trip - Trip object for context
-   * @param {Object} chunk - Chunk configuration
-   * @returns {Promise<Array>} Enriched days
-   */
-  async _enrichChunkWithPOI(chunkDays, trip, chunk) {
-    try {
-      const tripContext = this._createTripContext(trip, chunk);
-      const allActivities = this._extractActivitiesFromDays(chunkDays);
-      
-      // Limit activities for performance if needed
-      const limitedActivities = this.config.poi.maxPoisPerChunk ? 
-        allActivities.slice(0, this.config.poi.maxPoisPerChunk) : allActivities;
-      
-      const enrichedActivities = await this.poiCacheService.enrichActivities(limitedActivities, tripContext);
-      const enrichedDays = this._mapActivitiesBackToDays(chunkDays, enrichedActivities);
-      
-      return enrichedDays;
-    } catch (error) {
-      console.error(` POI enrichment failed for chunk ${chunk.id}:`, error.message);
-      // Return original days if enrichment fails
-      return chunkDays;
-    }
-  }
 
-  /**
-   * Create trip context for POI extraction
-   * @param {Object} trip - Trip object
-   * @param {Object} chunk - Optional chunk context
-   * @returns {Object} Trip context for POI extraction
-   */
-  _createTripContext(trip, chunk = null) {
-    return {
-      destination: trip.destination?.destination || 'Unknown',
-      city: this._extractCityFromDestination(trip.destination?.destination),
-      country: this._extractCountryFromDestination(trip.destination?.destination),
-      duration: trip.duration,
-      travelers: trip.travelers,
-      budget: trip.budget,
-      interests: trip.preferences?.interests || [],
-      constraints: trip.preferences?.constraints || [],
-      chunkFocus: chunk?.focus,
-      chunkDetailLevel: chunk?.detailLevel
-    };
-  }
 
-  /**
-   * Extract activities from days array
-   * @param {Array} days - Array of day objects
-   * @returns {Array} Array of activities
-   */
-  _extractActivitiesFromDays(days) {
-    const activities = [];
-    
-    days.forEach(day => {
-      if (day.activities && Array.isArray(day.activities)) {
-        day.activities.forEach(activity => {
-          activities.push({
-            ...activity,
-            dayDate: day.date,
-            dayIndex: days.indexOf(day)
-          });
-        });
-      }
-    });
-    
-    return activities;
-  }
 
-  /**
-   * Map enriched activities back to days structure
-   * @param {Array} originalDays - Original days array
-   * @param {Array} enrichedActivities - Enriched activities array
-   * @returns {Array} Days with enriched activities
-   */
-  _mapActivitiesBackToDays(originalDays, enrichedActivities) {
-    const enrichedDays = originalDays.map(day => ({ ...day }));
-    
-    enrichedActivities.forEach(enrichedActivity => {
-      const dayIndex = enrichedActivity.dayIndex;
-      const activityIndex = enrichedDays[dayIndex]?.activities?.findIndex(act => 
-        act.title === enrichedActivity.title && act.time === enrichedActivity.time
-      );
-      
-      if (dayIndex !== undefined && activityIndex !== -1) {
-        enrichedDays[dayIndex].activities[activityIndex] = {
-          ...enrichedActivity,
-          // Remove temporary indexing properties
-          dayDate: undefined,
-          dayIndex: undefined
-        };
-      }
-    });
-    
-    return enrichedDays;
-  }
 
-  /**
-   * Extract city from destination string
-   * @param {string} destination - Destination string
-   * @returns {string} Extracted city name
-   */
-  _extractCityFromDestination(destination) {
-    if (!destination) return 'Unknown City';
-    
-    const destLower = destination.toLowerCase();
-    
-    // Known city patterns
-    const cityPatterns = {
-      'ho chi minh': 'Ho Chi Minh City',
-      'saigon': 'Ho Chi Minh City',
-      'hanoi': 'Hanoi',
-      'hue': 'Hue',
-      'da nang': 'Da Nang',
-      'tokyo': 'Tokyo',
-      'kyoto': 'Kyoto',
-      'osaka': 'Osaka',
-      'paris': 'Paris',
-      'london': 'London',
-      'new york': 'New York',
-      'bangkok': 'Bangkok',
-      'singapore': 'Singapore'
-    };
-    
-    for (const [pattern, city] of Object.entries(cityPatterns)) {
-      if (destLower.includes(pattern)) {
-        return city;
-      }
-    }
-    
-    // Fallback: take first part before comma or use whole string
-    const parts = destination.split(',');
-    return parts[0].trim();
-  }
 
-  /**
-   * Extract country from destination string
-   * @param {string} destination - Destination string
-   * @returns {string} Extracted country name
-   */
-  _extractCountryFromDestination(destination) {
-    if (!destination) return 'Unknown Country';
-    
-    const destLower = destination.toLowerCase();
-    
-    // Known country patterns
-    const countryPatterns = {
-      'vietnam': 'Vietnam',
-      'japan': 'Japan',
-      'france': 'France',
-      'united kingdom': 'United Kingdom',
-      'uk': 'United Kingdom',
-      'usa': 'United States',
-      'united states': 'United States',
-      'thailand': 'Thailand',
-      'singapore': 'Singapore',
-      'china': 'China',
-      'south korea': 'South Korea',
-      'korea': 'South Korea',
-      'italy': 'Italy',
-      'spain': 'Spain',
-      'germany': 'Germany'
-    };
-    
-    for (const [pattern, country] of Object.entries(countryPatterns)) {
-      if (destLower.includes(pattern)) {
-        return country;
-      }
-    }
-    
-    // Fallback: look for last part after comma or use a default
-    const parts = destination.split(',');
-    if (parts.length > 1) {
-      return parts[parts.length - 1].trim();
-    }
-    
-    return 'Unknown Country';
-  }
 
-  /**
-   * Get POI enrichment statistics
-   * @returns {Object} POI enrichment stats
-   */
-  getPOIStats() {
-    return this.poiCacheService.getServiceStats();
-  }
 
-  /**
-   * Enable or disable POI enrichment
-   * @param {boolean} enabled - Whether to enable POI enrichment
-   */
-  setPOIEnrichment(enabled) {
-    this.config.poi.enableEnrichment = enabled;
-    console.log(`POI enrichment ${enabled ? 'enabled' : 'disabled'}`);
-  }
+
+
+
+
 }
 
 module.exports = LongTripHandler;

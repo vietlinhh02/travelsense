@@ -5,7 +5,6 @@ const PromptBuilder = require('./promptBuilder');
 const ResponseParser = require('./responseParser');
 const ActivityTemplateService = require('./activityTemplateService');
 const LongTripHandler = require('./longTripHandler');
-const { POICacheService } = require('../poi');
 
 class GeminiService {
   constructor() {
@@ -14,13 +13,6 @@ class GeminiService {
     this.responseParser = new ResponseParser();
     this.templateService = new ActivityTemplateService();
     this.longTripHandler = new LongTripHandler();
-    this.poiCacheService = new POICacheService();
-    
-    // Configuration for POI enrichment
-    this.config = {
-      enablePOIEnrichment: true,
-      enrichAfterGeneration: true
-    };
   }
 
   /**
@@ -177,12 +169,6 @@ class GeminiService {
           } else {
             throw fallbackError;
           }
-        }
-        
-        // Enrich POI data for standard itinerary if enabled
-        if (this.config.enablePOIEnrichment && this.config.enrichAfterGeneration && itinerary.days) {
-          console.log(' Enriching standard itinerary with POI data');
-          itinerary = await this._enrichItineraryPOIData(itinerary, trip);
         }
       }
 
@@ -512,12 +498,6 @@ class GeminiService {
       }
     }
     
-    // Enrich POI data for standard itinerary if enabled
-    if (this.config.enablePOIEnrichment && this.config.enrichAfterGeneration && itinerary.days) {
-      console.log('Enriching _generateStandardItinerary with POI data');
-      itinerary = await this._enrichItineraryPOIData(itinerary, trip);
-    }
-    
     return itinerary;
   }
 
@@ -535,65 +515,7 @@ class GeminiService {
     }
   }
 
-  /**
-   * Enrich itinerary with POI data using the POI Cache Service
-   * @param {Object} itinerary - Generated itinerary object
-   * @param {Object} trip - Trip object for context
-   * @returns {Promise<Object>} Enriched itinerary
-   */
-  async _enrichItineraryPOIData(itinerary, trip) {
-    try {
-      console.log(` Starting POI enrichment for itinerary with ${itinerary.days?.length || 0} days`);
-      
-      if (!itinerary.days || itinerary.days.length === 0) {
-        console.warn(' No days found in itinerary, skipping POI enrichment');
-        return itinerary;
-      }
 
-      // Extract all activities from all days
-      const allActivities = this._extractActivitiesFromDays(itinerary.days);
-      
-      if (allActivities.length === 0) {
-        console.warn(' No activities found in itinerary, skipping POI enrichment');
-        return itinerary;
-      }
-
-      // Create trip context for better POI extraction
-      const tripContext = this._createTripContext(trip);
-      
-      // Enrich activities with POI data
-      const enrichedActivities = await this.poiCacheService.enrichActivities(allActivities, tripContext);
-      
-      // Map enriched activities back to days
-      const enrichedDays = this._mapActivitiesBackToDays(itinerary.days, enrichedActivities);
-      
-      console.log(` POI enrichment completed for ${enrichedActivities.length} activities`);
-      
-      return {
-        ...itinerary,
-        days: enrichedDays,
-        poi_enrichment: {
-          enabled: true,
-          activities_processed: allActivities.length,
-          activities_enriched: enrichedActivities.filter(a => a.enrichment_status === 'success').length,
-          timestamp: new Date().toISOString()
-        }
-      };
-
-    } catch (error) {
-      console.error(' POI enrichment failed:', error.message);
-      
-      // Return original itinerary with error info if enrichment fails
-      return {
-        ...itinerary,
-        poi_enrichment: {
-          enabled: true,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        }
-      };
-    }
-  }
 
   /**
    * Extract all activities from itinerary days
@@ -618,64 +540,9 @@ class GeminiService {
     return activities;
   }
 
-  /**
-   * Create trip context for POI extraction
-   * @param {Object} trip - Trip object
-   * @returns {Object} Trip context for POI service
-   */
-  _createTripContext(trip) {
-    return {
-      destination: trip.destination?.destination || 'Unknown',
-      city: trip.destination?.city || 'Unknown',
-      country: trip.destination?.country || 'Unknown',
-      duration: trip.duration || 1,
-      interests: trip.preferences?.interests || [],
-      budget: trip.budget || {},
-      startDate: trip.destination?.startDate,
-      endDate: trip.destination?.endDate,
-      travelers: trip.travelers || {}
-    };
-  }
 
-  /**
-   * Map enriched activities back to the original day structure
-   * @param {Array} originalDays - Original days array
-   * @param {Array} enrichedActivities - Enriched activities array
-   * @returns {Array} Days with enriched activities mapped back
-   */
-  _mapActivitiesBackToDays(originalDays, enrichedActivities) {
-    // Create a map of enriched activities by their original position
-    const enrichedMap = new Map();
-    enrichedActivities.forEach(activity => {
-      if (typeof activity._dayIndex !== 'undefined' && typeof activity._activityIndex !== 'undefined') {
-        const key = `${activity._dayIndex}_${activity._activityIndex}`;
-        enrichedMap.set(key, activity);
-      }
-    });
-    
-    // Map enriched activities back to days
-    return originalDays.map((day, dayIndex) => {
-      if (!day.activities) return day;
-      
-      const enrichedDayActivities = day.activities.map((activity, activityIndex) => {
-        const key = `${dayIndex}_${activityIndex}`;
-        const enrichedActivity = enrichedMap.get(key);
-        
-        if (enrichedActivity) {
-          // Remove internal tracking properties
-          const { _dayIndex, _activityIndex, ...cleanActivity } = enrichedActivity;
-          return cleanActivity;
-        }
-        
-        return activity;
-      });
-      
-      return {
-        ...day,
-        activities: enrichedDayActivities
-      };
-    });
-  }
+
+
 
   /**
    * Get service health status
@@ -692,11 +559,9 @@ class GeminiService {
         promptBuilder: true,
         responseParser: true,
         templateService: true,
-        longTripHandler: true,
-        poiCacheService: !!this.poiCacheService
+        longTripHandler: true
       },
       longTripConfig: this.longTripHandler.getConfig(),
-      poiEnrichmentConfig: this.config,
       timestamp: new Date().toISOString()
     };
   }
