@@ -16,6 +16,8 @@ router.use('/ai', require('./ai'));
 // Search routes
 router.use('/search', require('./search'));
 
+
+
 // Health check endpoint
 router.get('/health', (req, res) => {
   res.status(200).json({
