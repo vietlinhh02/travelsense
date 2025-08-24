@@ -27,16 +27,16 @@ class ResponseParser {
       try {
         const parsedItinerary = this._parseGeminiItineraryResponse(content, trip);
         if (parsedItinerary && parsedItinerary.days && parsedItinerary.days.length > 0) {
-          console.log('✅ Successfully parsed real Gemini API itinerary response');
+          console.log('Successfully parsed real Gemini API itinerary response');
           return parsedItinerary;
         }
       } catch (error) {
-        console.warn('⚠️  Failed to parse Gemini response, falling back to mock generation:', error.message);
+        console.warn(' Failed to parse Gemini response, falling back to mock generation:', error.message);
       }
     }
 
     // Fall back to mock/template-based generation
-    console.log('🔄 Using template-based itinerary generation as fallback');
+    console.log('Using template-based itinerary generation as fallback');
     throw new Error('FALLBACK_TO_TEMPLATE_REQUIRED');
   }
 
@@ -128,7 +128,41 @@ class ResponseParser {
   parseActivityFromDescription(time, description, trip) {
     // Extract location information if mentioned
     const locationMatch = description.match(/at\s+([^,\.!?]+)/i);
-    const location = locationMatch ? locationMatch[1].trim() : trip.destination.destination;
+    let location = locationMatch ? locationMatch[1].trim() : null;
+    
+    // If no specific location found, extract the main subject of the activity
+    if (!location) {
+      // Try to extract venue name from common activity patterns
+      const visitMatch = description.match(/visit\s+([^,\.!?]+)/i);
+      const exploreMatch = description.match(/explore\s+([^,\.!?]+)/i);
+      const tourMatch = description.match(/tour\s+([^,\.!?]+)/i);
+      
+      location = visitMatch?.[1]?.trim() || exploreMatch?.[1]?.trim() || tourMatch?.[1]?.trim();
+    }
+    
+    // Clean and validate location name
+    if (location) {
+      location = this._cleanLocationName(location);
+      // If location is still too generic or empty, don't use it
+      if (this._isGenericLocationName(location)) {
+        location = null;
+      }
+    }
+    
+    // Extract a more detailed address if mentioned
+    let address = null;
+    const addressPatterns = [
+      /\(at\s+([^)]+)\)/i,  // Address in parentheses
+      /\bat\s+([^,\.!?]+(?:,\s*[^,\.!?]+)*)/i  // More detailed address pattern
+    ];
+    
+    for (const pattern of addressPatterns) {
+      const match = description.match(pattern);
+      if (match && match[1] && match[1].includes(',')) {
+        address = match[1].trim();
+        break;
+      }
+    }
     
     // Estimate duration based on activity type
     const duration = this._estimateActivityDuration(description);
@@ -144,8 +178,8 @@ class ResponseParser {
       title: this._extractActivityTitle(description),
       description: description,
       location: {
-        name: location,
-        address: `${location}, ${trip.destination.destination}`,
+        name: location || trip.destination.destination,
+        address: address || (location ? `${location}, ${trip.destination.destination}` : `${trip.destination.destination}`),
         coordinates: this._generateCoordinates(trip.destination.destination)
       },
       duration: duration,
@@ -168,16 +202,16 @@ class ResponseParser {
       try {
         const parsedItinerary = this._parseChunkedGeminiResponse(content, trip, chunk);
         if (parsedItinerary && parsedItinerary.days && parsedItinerary.days.length > 0) {
-          console.log(`✅ Successfully parsed chunked Gemini response for ${chunk.id}`);
+          console.log(` Successfully parsed chunked Gemini response for ${chunk.id}`);
           return parsedItinerary;
         }
       } catch (error) {
-        console.warn(`⚠️  Failed to parse chunked Gemini response for ${chunk.id}, using fallback:`, error.message);
+        console.warn(` Failed to parse chunked Gemini response for ${chunk.id}, using fallback:`, error.message);
       }
     }
 
     // Fall back to chunk-specific template generation
-    console.log(`🔄 Using template-based generation for chunk ${chunk.id}`);
+    console.log(`Using template-based generation for chunk ${chunk.id}`);
     return this._generateChunkFallback(trip, chunk);
   }
 
@@ -581,6 +615,60 @@ Day 2: Cultural Immersion
 • Budget for both planned activities and spontaneous discoveries
 
 Would you like me to elaborate on any of these aspects? [Configure Gemini API key for personalized AI responses]`;
+  }
+
+  /**
+   * Clean location name by removing common prefixes and suffixes
+   * @param {string} location - Raw location string
+   * @returns {string} Cleaned location name
+   */
+  _cleanLocationName(location) {
+    if (!location) return location;
+    
+    return location
+      .replace(/^(the|a|an)\s+/i, '') // Remove articles
+      .replace(/\s+(area|district|neighborhood|zone)$/i, '') // Remove generic suffixes
+      .replace(/\s+(in|at|near)\s+.*/i, '') // Remove location descriptions
+      .trim();
+  }
+
+  /**
+   * Check if location name is too generic to be useful for API searches
+   * @param {string} location - Location name to check
+   * @returns {boolean} True if location is generic
+   */
+  _isGenericLocationName(location) {
+    if (!location || location.length < 3) return true;
+    
+    const genericTerms = [
+      'this', 'that', 'the', 'a', 'an',
+      'iconic', 'famous', 'popular', 'renowned', 'well-known',
+      'landmark', 'attraction', 'site', 'place', 'spot', 'venue',
+      'temple', 'museum', 'market', 'restaurant', 'shop', 'mall',
+      'park', 'garden', 'beach', 'mountain', 'river', 'lake',
+      'unknown', 'various', 'local', 'nearby', 'area', 'vicinity',
+      'around', 'general', 'different', 'several', 'multiple'
+    ];
+    
+    const locationLower = location.toLowerCase();
+    
+    // Check if location is just a generic term
+    if (genericTerms.includes(locationLower)) return true;
+    
+    // Check if location starts with generic phrases
+    const genericPhrases = [
+      'this iconic', 'this famous', 'this popular', 'this renowned',
+      'the iconic', 'the famous', 'the popular', 'the renowned',
+      'a famous', 'a popular', 'an iconic', 'a renowned',
+      'famous landmark', 'iconic landmark', 'popular attraction',
+      'well-known', 'renowned', 'historic site'
+    ];
+    
+    for (const phrase of genericPhrases) {
+      if (locationLower.startsWith(phrase)) return true;
+    }
+    
+    return false;
   }
 }
 

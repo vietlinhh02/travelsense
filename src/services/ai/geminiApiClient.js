@@ -59,14 +59,14 @@ class GeminiApiClient {
    */
   async callGeminiAPI(model, prompt, options = {}) {
     if (!this.hasValidApiKey()) {
-      console.warn('⚠️  No valid Gemini API key found.');
+      console.warn(' No valid Gemini API key found.');
       throw new Error('NO_VALID_API_KEY');
     }
 
     const modelConfig = this.modelConfigs[model] || this.modelConfigs.flash;
     const requestPayload = this._buildRequestPayload(prompt, options);
 
-    console.log(`🤖 Making real Gemini API call to ${modelConfig.name}...`);
+    console.log(`Making real Gemini API call to ${modelConfig.name}...`);
     
     return await this._executeWithRetry(modelConfig, requestPayload);
   }
@@ -83,7 +83,7 @@ class GeminiApiClient {
     
     while (attempt <= maxRetries) {
       try {
-        console.log(`📡 Attempt ${attempt}/${maxRetries} - Calling ${modelConfig.name}...`);
+        console.log(` Attempt ${attempt}/${maxRetries} - Calling ${modelConfig.name}...`);
         
         const response = await axios.post(modelConfig.endpoint, requestPayload, {
           headers: {
@@ -96,7 +96,7 @@ class GeminiApiClient {
         return this._processResponse(response, modelConfig.name, requestPayload.contents[0].parts[0].text);
         
       } catch (error) {
-        console.log(`⚠️ Attempt ${attempt} failed: ${error.message}`);
+        console.log(` Attempt ${attempt} failed: ${error.message}`);
         
         if (attempt === maxRetries) {
           throw error;
@@ -104,7 +104,7 @@ class GeminiApiClient {
         
         // Wait before retry (exponential backoff)
         const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s...
-        console.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+        console.log(` Waiting ${waitTime/1000}s before retry...`);
         await this._delay(waitTime);
         
         attempt++;
@@ -153,7 +153,7 @@ class GeminiApiClient {
     // Calculate approximate token usage
     const tokensUsed = Math.ceil((originalPrompt.length + content.length) / 4);
 
-    console.log(`✅ Gemini API response received (${tokensUsed} tokens estimated)`);
+    console.log(` Gemini API response received (${tokensUsed} tokens estimated)`);
 
     return {
       content: content,

@@ -145,7 +145,7 @@ class LongTripHandler {
       const standardItinerary = await aiServices.generateStandardItinerary(trip);
       
       if (this.config.poi.enableEnrichment && standardItinerary.days) {
-        console.log('🌟 Enriching standard itinerary with POI data');
+        console.log(' Enriching standard itinerary with POI data');
         const tripContext = this._createTripContext(trip);
         const allActivities = this._extractActivitiesFromDays(standardItinerary.days);
         const enrichedActivities = await this.poiCacheService.enrichActivities(allActivities, tripContext);
@@ -156,7 +156,7 @@ class LongTripHandler {
       return standardItinerary;
     }
 
-    console.log(`🔄 Generating long trip itinerary in ${analysis.chunks.length} chunks`);
+    console.log(` Generating long trip itinerary in ${analysis.chunks.length} chunks`);
     
     const allDays = [];
     const generationContext = {
@@ -169,7 +169,7 @@ class LongTripHandler {
     // Generate each chunk sequentially for context continuity
     for (const chunk of analysis.chunks) {
       try {
-        console.log(`📝 Generating chunk: ${chunk.id} (Days ${chunk.startDay}-${chunk.endDay})`);
+        console.log(` Generating chunk: ${chunk.id} (Days ${chunk.startDay}-${chunk.endDay})`);
         
         const chunkItinerary = await this._generateChunkItinerary(
           trip,
@@ -181,7 +181,7 @@ class LongTripHandler {
         // Enrich POI data for this chunk if enabled
         let enrichedChunkDays = chunkItinerary.days;
         if (this.config.poi.enableEnrichment && this.config.poi.enrichAfterGeneration) {
-          console.log(`🌟 Enriching POI data for chunk: ${chunk.id}`);
+          console.log(` Enriching POI data for chunk: ${chunk.id}`);
           enrichedChunkDays = await this._enrichChunkWithPOI(chunkItinerary.days, trip, chunk);
         }
         
@@ -194,7 +194,7 @@ class LongTripHandler {
         await this._delay(1000);
         
       } catch (error) {
-        console.warn(`⚠️ Chunk ${chunk.id} generation failed, using fallback:`, error.message);
+        console.warn(`Chunk ${chunk.id} generation failed, using fallback:`, error.message);
         
         // Generate fallback days for this chunk
         const fallbackDays = this._generateFallbackDays(trip, chunk);
@@ -202,7 +202,7 @@ class LongTripHandler {
       }
     }
 
-    console.log(`✅ Long trip generation completed with ${allDays.length} days generated`);
+    console.log(`Long trip generation completed with ${allDays.length} days generated`);
     return { days: allDays.slice(0, trip.duration) };
   }
 
@@ -540,7 +540,7 @@ class LongTripHandler {
       
       return enrichedDays;
     } catch (error) {
-      console.error(`❌ POI enrichment failed for chunk ${chunk.id}:`, error.message);
+      console.error(` POI enrichment failed for chunk ${chunk.id}:`, error.message);
       // Return original days if enrichment fails
       return chunkDays;
     }
@@ -714,7 +714,7 @@ class LongTripHandler {
    */
   setPOIEnrichment(enabled) {
     this.config.poi.enableEnrichment = enabled;
-    console.log(`🔧 POI enrichment ${enabled ? 'enabled' : 'disabled'}`);
+    console.log(`POI enrichment ${enabled ? 'enabled' : 'disabled'}`);
   }
 }
 

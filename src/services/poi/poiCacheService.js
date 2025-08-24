@@ -30,12 +30,10 @@ class POICacheService {
    * @returns {Promise<Array>} Array of enriched activities
    */
   async enrichActivities(activities, tripContext = {}) {
-    console.log(`🌟 Starting POI enrichment for ${activities.length} activities`);
     
     try {
       // Step 1: Extract POIs from activities
       const extractedPOIs = await this.poiExtractor.extractPOIsFromItinerary(activities, tripContext);
-      console.log(`🔍 Extracted ${extractedPOIs.length} POIs from activities`);
 
       // Step 2: Enrich each POI with external data
       const enrichedPOIs = await this._enrichPOIsBatch(extractedPOIs);
@@ -43,7 +41,6 @@ class POICacheService {
       // Step 3: Map enriched data back to activities
       const enrichedActivities = await this._mapEnrichedDataToActivities(activities, enrichedPOIs);
 
-      console.log(`✅ POI enrichment completed: ${enrichedPOIs.length} POIs enriched`);
       return enrichedActivities;
 
     } catch (error) {
@@ -68,30 +65,27 @@ class POICacheService {
    * @returns {Promise<Object>} Enriched POI data
    */
   async getEnrichedPOI(poiQuery) {
-    console.log(`🔍 Getting enriched POI: ${poiQuery.name} in ${poiQuery.city}, ${poiQuery.country}`);
+
+    // Skip generic location names
+    if (this._isGenericLocationName(poiQuery.name) || 
+        this._isGenericLocationName(poiQuery.city) || 
+        this._isGenericLocationName(poiQuery.country)) {
+      
+      return this._createBasicPOI(poiQuery);
+    }
 
     try {
-      // Step 1: Check cache first
-      const cachedPOI = await this._getCachedPOI(poiQuery);
-      if (cachedPOI && !cachedPOI.isExpired()) {
-        console.log(`✅ Cache hit for ${poiQuery.name}`);
-        await cachedPOI.recordHit();
-        return cachedPOI.getEnrichedData();
-      }
-
-      // Step 2: Fetch from APIs if cache miss or expired
-      console.log(`🌐 Cache miss for ${poiQuery.name}, fetching from APIs`);
+      
+      // Fetch fresh data from APIs only
       const enrichedData = await this._fetchAndMergePOIData(poiQuery);
 
-      // Step 3: Update cache
-      await this._updatePOICache(poiQuery, enrichedData);
 
       return enrichedData.enriched;
 
     } catch (error) {
       console.error(`❌ Failed to get enriched POI for ${poiQuery.name}:`, error.message);
       
-      // Return basic POI structure on error
+      // Return basic POI structure on error (no mock data)
       return this._createBasicPOI(poiQuery);
     }
   }
@@ -107,11 +101,9 @@ class POICacheService {
 
     for (let i = 0; i < poiQueries.length; i += batchSize) {
       const batch = poiQueries.slice(i, i + batchSize);
-      console.log(`🔄 Processing POI batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(poiQueries.length / batchSize)}`);
 
       const batchPromises = batch.map(poiQuery => 
         this.getEnrichedPOI(poiQuery).catch(error => {
-          console.error(`⚠️ Failed to enrich POI ${poiQuery.name}:`, error.message);
           return this._createBasicPOI(poiQuery);
         })
       );
@@ -154,30 +146,29 @@ class POICacheService {
       category: poiQuery.category
     };
 
-    console.log(`🌐 Fetching data from APIs for: ${poiQuery.name}`);
-
-    // Fetch from both APIs in parallel
+    // Temporarily disable Foursquare - only fetch from TripAdvisor
     const [foursquareResult, tripAdvisorResult] = await Promise.allSettled([
-      this._fetchFromFoursquare(searchParams),
+      Promise.resolve({ status: 'rejected', reason: new Error('Foursquare temporarily disabled') }),
       this._fetchFromTripAdvisor(searchParams)
     ]);
 
-    const foursquareData = foursquareResult.status === 'fulfilled' ? foursquareResult.value : null;
+    const foursquareData = null; // Foursquare disabled
     const tripAdvisorData = tripAdvisorResult.status === 'fulfilled' ? tripAdvisorResult.value : null;
 
-    // Merge the data
+    // Merge the data (only TripAdvisor)
     const mergedData = this._mergeAPIData(poiQuery, foursquareData, tripAdvisorData);
 
     return {
       placeId: POICache.generatePlaceId(poiQuery),
       query: poiQuery,
-      foursquare: foursquareData,
+      foursquare: null, // Disabled
       tripadvisor: tripAdvisorData,
       enriched: mergedData,
       cache: {
-        foursquare_fetched: !!foursquareData,
+        foursquare_fetched: false, // Disabled
         tripadvisor_fetched: !!tripAdvisorData,
-        fetch_errors: this._collectFetchErrors(foursquareResult, tripAdvisorResult)
+        fetch_errors: this._collectFetchErrors(foursquareResult, tripAdvisorResult),
+        foursquare_disabled: true // Add flag to indicate it's disabled
       }
     };
   }
@@ -437,11 +428,9 @@ class POICacheService {
         { upsert: true, new: true }
       );
 
-      console.log(`💾 Updated cache for ${poiQuery.name}`);
       return result;
 
     } catch (error) {
-      console.error('❌ Failed to update POI cache:', error.message);
       throw error;
     }
   }
@@ -489,6 +478,28 @@ class POICacheService {
         enrichment_status: 'no_match'
       };
     });
+  }
+
+  /**
+   * Check if a location name is generic and should be skipped
+   * @param {string} locationName - Location name to check
+   * @returns {boolean} True if location name is generic
+   */
+  _isGenericLocationName(locationName) {
+    if (!locationName || typeof locationName !== 'string') {
+      return true;
+    }
+    
+    const normalized = locationName.toLowerCase().trim();
+    const genericTerms = [
+      'unknown', 'null', 'undefined', 'n/a', 'na', '',
+      'this iconic landmark', 'famous landmark', 'popular attraction',
+      'local market', 'traditional market', 'historic site',
+      'cultural center', 'tourist attraction', 'landmark',
+      'when', 'where', 'what', 'how', 'why', 'which'
+    ];
+    
+    return genericTerms.includes(normalized) || normalized.length < 2;
   }
 
   /**
@@ -569,10 +580,23 @@ class POICacheService {
    */
   getServiceStats() {
     return {
-      config: this.config,
-      foursquareStats: this.foursquareClient.getUsageStats(),
+      config: {
+        ...this.config,
+        cache_enabled: false,
+        cache_note: 'MongoDB cache disabled - using live API calls only'
+      },
+      foursquareStats: {
+        ...this.foursquareClient.getUsageStats(),
+        status: 'TEMPORARILY_DISABLED',
+        note: 'Foursquare API temporarily disabled - using TripAdvisor only'
+      },
       tripAdvisorStats: this.tripAdvisorClient.getUsageStats(),
-      extractorStats: this.poiExtractor.getServiceStats()
+      extractorStats: this.poiExtractor.getServiceStats(),
+      dataQuality: {
+        generic_name_filtering: 'ENABLED',
+        cache_corruption_protection: 'ENABLED',
+        live_api_only: 'ENABLED'
+      }
     };
   }
 
@@ -581,8 +605,7 @@ class POICacheService {
    * @param {Object} newConfig - New configuration values
    */
   updateConfig(newConfig) {
-    this.config = { ...this.config, ...newConfig };
-    console.log('⚙️ POI Cache Service configuration updated:', newConfig);
+    this.config = { ...this.config, ...newConfig };Ư
   }
 
   /**
@@ -593,10 +616,8 @@ class POICacheService {
   async cleanupExpiredCache(daysOld = 90) {
     try {
       const result = await POICache.cleanupExpired(daysOld);
-      console.log(`🧹 Cleaned up ${result.deletedCount} expired POI cache entries`);
       return result;
     } catch (error) {
-      console.error('❌ Cache cleanup failed:', error.message);
       throw error;
     }
   }
