@@ -188,12 +188,18 @@ const poiCacheSchema = new mongoose.Schema({
     name: String,
     description: String,
     coordinates: {
-      latitude: {
-        type: Number,
-        index: '2dsphere'
+      latitude: Number,
+      longitude: Number
+    },
+    // GeoJSON location for MongoDB geospatial queries
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
       },
-      longitude: {
-        type: Number,
+      coordinates: {
+        type: [Number], // [longitude, latitude]
         index: '2dsphere'
       }
     },
@@ -268,7 +274,7 @@ const poiCacheSchema = new mongoose.Schema({
 
 // Indexes for efficient querying
 poiCacheSchema.index({ 'query.name': 1, 'query.city': 1, 'query.country': 1 });
-poiCacheSchema.index({ 'enriched.coordinates': '2dsphere' });
+poiCacheSchema.index({ 'enriched.location': '2dsphere' });
 poiCacheSchema.index({ 'cache.expires_at': 1 });
 poiCacheSchema.index({ 'cache.updated_at': -1 });
 poiCacheSchema.index({ 'foursquare.fsq_id': 1 });
