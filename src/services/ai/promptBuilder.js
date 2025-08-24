@@ -19,14 +19,18 @@ Day 1: [Date]
 Day 2: [Date]
 [Continue same format...]
 
-For each activity, include:
-- Specific venue names and locations
+CRITICAL REQUIREMENTS for each activity:
+- Use EXACT venue names (e.g., "Ben Thanh Market", "Independence Palace", "War Remnants Museum")
+- Include SPECIFIC addresses (e.g., "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City")
+- NO generic terms like "this iconic landmark", "famous temple", or "Unknown"
+- Every location MUST be a real, searchable place name
+- Provide precise venue information that can be found on Google Maps or travel APIs
 - Brief description of what to expect
 - Consider travel time between locations
 - Mix of cultural sites, food experiences, and interests mentioned
 - Realistic timing and practical logistics
 
-Focus on authentic local experiences and practical recommendations.`
+Focus on authentic local experiences with REAL, SPECIFIC venue names and addresses.`
       },
       optimization: {
         header: "Optimize the following trip schedule for better flow and efficiency:",
@@ -243,6 +247,9 @@ Focus on authentic local experiences and practical recommendations.`
       details += `- Constraints: ${trip.preferences.constraints.join(', ')}\n`;
     }
     
+    // Add destination-specific examples to guide AI
+    details += this._getDestinationSpecificExamples(trip.destination.destination);
+    
     return details;
   }
 
@@ -356,8 +363,11 @@ Day ${chunk.startDay}: [Date]
 ${chunk.endDay > chunk.startDay ? `Day ${chunk.endDay}: [Date]
 [Continue same format...]` : ''}
 
-For each activity, include:
-- Specific venue names and realistic locations
+CRITICAL REQUIREMENTS for each activity:
+- Use EXACT venue names (e.g., "Ben Thanh Market", "Independence Palace")
+- Include SPECIFIC addresses when possible
+- NO generic terms like "this landmark", "famous temple", or "Unknown"
+- Every location MUST be a real, searchable place name
 - Brief but informative descriptions
 - Consider travel time and practical logistics
 - Mix activities according to the specified focus
@@ -398,6 +408,42 @@ For each activity, include:
    */
   updateTemplate(type, template) {
     this.templates[type] = { ...this.templates[type], ...template };
+  }
+
+  /**
+   * Get destination-specific examples for venue names
+   * @param {string} destination - Destination name
+   * @returns {string} Examples specific to destination
+   */
+  _getDestinationSpecificExamples(destination) {
+    const destLower = destination.toLowerCase();
+    
+    if (destLower.includes('ho chi minh') || destLower.includes('saigon') || destLower.includes('vietnam')) {
+      return `\n**Example venue names for ${destination}:**\n` +
+        `- "Ben Thanh Market" (at "Le Loi, Ben Thanh Ward, District 1, Ho Chi Minh City")\n` +
+        `- "Independence Palace" (at "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City")\n` +
+        `- "War Remnants Museum" (at "28 Vo Van Tan, Ward 6, District 3, Ho Chi Minh City")\n` +
+        `- "Jade Emperor Pagoda" (at "73 Mai Thi Luu, Da Kao Ward, District 1")\n` +
+        `- "Notre Dame Cathedral" (at "01 Cong xa Paris, Ben Nghe Ward, District 1")\n` +
+        `- "Cu Chi Tunnels" (at "Cu Chi District, Ho Chi Minh City")\n`;
+    } else if (destLower.includes('tokyo') || destLower.includes('japan')) {
+      return `\n**Example venue names for ${destination}:**\n` +
+        `- "Senso-ji Temple" (at "2-3-1 Asakusa, Taito City, Tokyo")\n` +
+        `- "Meiji Shrine" (at "1-1 Kamizono-cho, Shibuya City, Tokyo")\n` +
+        `- "Tsukiji Outer Market" (at "5 Chome Tsukiji, Chuo City, Tokyo")\n` +
+        `- "Tokyo Skytree" (at "1-1-2 Oshiage, Sumida City, Tokyo")\n` +
+        `- "Imperial Palace East Gardens" (at "1-1 Chiyoda, Chiyoda City, Tokyo")\n` +
+        `- "Shibuya Crossing" (at "Shibuya, Tokyo")\n`;
+    } else if (destLower.includes('hanoi') || destLower.includes('ha noi')) {
+      return `\n**Example venue names for ${destination}:**\n` +
+        `- "Hoan Kiem Lake" (at "Hoan Kiem District, Hanoi")\n` +
+        `- "Temple of Literature" (at "58 Quoc Tu Giam, Dong Da, Hanoi")\n` +
+        `- "Old Quarter" (at "Hoan Kiem District, Hanoi")\n` +
+        `- "Ho Chi Minh Mausoleum" (at "2 Hung Vuong, Dien Bien, Ba Dinh, Hanoi")\n` +
+        `- "One Pillar Pagoda" (at "Chua Mot Cot, Doi Can, Ba Dinh, Hanoi")\n`;
+    } else {
+      return `\n**Important:** Use real, specific venue names that can be found on Google Maps or travel websites.\n`;
+    }
   }
 }
 
