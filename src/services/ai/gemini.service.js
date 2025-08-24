@@ -129,7 +129,7 @@ class GeminiService {
 
       // Analyze trip for long duration handling
       const tripAnalysis = this.longTripHandler.analyzeTrip(trip);
-      console.log(`📈 Trip analysis: ${trip.duration} days, chunking needed: ${tripAnalysis.needsChunking}`);
+      console.log(` Trip analysis: ${trip.duration} days, chunking needed: ${tripAnalysis.needsChunking}`);
 
       let itinerary;
       let totalTokensUsed = 0;
@@ -137,7 +137,7 @@ class GeminiService {
 
       if (tripAnalysis.needsChunking) {
         // Use chunked generation for long trips
-        console.log(`🚀 Generating long trip itinerary using ${tripAnalysis.strategy}`);
+        console.log(` Generating long trip itinerary using ${tripAnalysis.strategy}`);
         
         try {
           itinerary = await this.longTripHandler.generateChunkedItinerary(trip, {
@@ -151,14 +151,14 @@ class GeminiService {
           totalTokensUsed = tripAnalysis.estimatedTokens || 0;
           
         } catch (chunkError) {
-          console.warn('⚠️  Chunked generation failed, falling back to template service:', chunkError.message);
+          console.warn(' Chunked generation failed, falling back to template service:', chunkError.message);
           itinerary = this.templateService.generateTemplateBasedItinerary(trip);
           totalTokensUsed = 0;
         }
         
       } else {
         // Use standard generation for normal trips
-        console.log('📄 Generating standard itinerary');
+        console.log(' Generating standard itinerary');
         
         // Prepare structured prompt using PromptBuilder
         prompt = this.promptBuilder.buildItineraryPrompt(trip, focus);
@@ -172,7 +172,7 @@ class GeminiService {
           itinerary = this.responseParser.processItineraryResponse(response.content, trip);
         } catch (fallbackError) {
           if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
-            console.log('🔄 Using ActivityTemplateService for itinerary generation...');
+            console.log(' Using ActivityTemplateService for itinerary generation...');
             itinerary = this.templateService.generateTemplateBasedItinerary(trip);
           } else {
             throw fallbackError;
@@ -181,7 +181,7 @@ class GeminiService {
         
         // Enrich POI data for standard itinerary if enabled
         if (this.config.enablePOIEnrichment && this.config.enrichAfterGeneration && itinerary.days) {
-          console.log('🌟 Enriching standard itinerary with POI data');
+          console.log(' Enriching standard itinerary with POI data');
           itinerary = await this._enrichItineraryPOIData(itinerary, trip);
         }
       }
@@ -478,10 +478,10 @@ class GeminiService {
     try {
       return await this.apiClient.callGeminiAPI(model, prompt);
     } catch (error) {
-      console.error('❌ Gemini API call failed:', error.response?.data || error.message);
+      console.error(' Gemini API call failed:', error.response?.data || error.message);
       
       // If API fails, fall back to mock response
-      console.log('🔄 Falling back to mock response...');
+      console.log(' Falling back to mock response...');
       return await this.responseParser.generateMockResponse(model, prompt);
     }
   }
@@ -505,7 +505,7 @@ class GeminiService {
       itinerary = this.responseParser.processItineraryResponse(response.content, trip);
     } catch (fallbackError) {
       if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
-        console.log('🔄 Using ActivityTemplateService for standard itinerary generation...');
+        console.log(' Using ActivityTemplateService for standard itinerary generation...');
         itinerary = this.templateService.generateTemplateBasedItinerary(trip);
       } else {
         throw fallbackError;
@@ -514,7 +514,7 @@ class GeminiService {
     
     // Enrich POI data for standard itinerary if enabled
     if (this.config.enablePOIEnrichment && this.config.enrichAfterGeneration && itinerary.days) {
-      console.log('🌟 Enriching _generateStandardItinerary with POI data');
+      console.log('Enriching _generateStandardItinerary with POI data');
       itinerary = await this._enrichItineraryPOIData(itinerary, trip);
     }
     
@@ -543,10 +543,10 @@ class GeminiService {
    */
   async _enrichItineraryPOIData(itinerary, trip) {
     try {
-      console.log(`🌟 Starting POI enrichment for itinerary with ${itinerary.days?.length || 0} days`);
+      console.log(` Starting POI enrichment for itinerary with ${itinerary.days?.length || 0} days`);
       
       if (!itinerary.days || itinerary.days.length === 0) {
-        console.warn('⚠️ No days found in itinerary, skipping POI enrichment');
+        console.warn(' No days found in itinerary, skipping POI enrichment');
         return itinerary;
       }
 
@@ -554,7 +554,7 @@ class GeminiService {
       const allActivities = this._extractActivitiesFromDays(itinerary.days);
       
       if (allActivities.length === 0) {
-        console.warn('⚠️ No activities found in itinerary, skipping POI enrichment');
+        console.warn(' No activities found in itinerary, skipping POI enrichment');
         return itinerary;
       }
 
@@ -567,7 +567,7 @@ class GeminiService {
       // Map enriched activities back to days
       const enrichedDays = this._mapActivitiesBackToDays(itinerary.days, enrichedActivities);
       
-      console.log(`✅ POI enrichment completed for ${enrichedActivities.length} activities`);
+      console.log(` POI enrichment completed for ${enrichedActivities.length} activities`);
       
       return {
         ...itinerary,
@@ -581,7 +581,7 @@ class GeminiService {
       };
 
     } catch (error) {
-      console.error('❌ POI enrichment failed:', error.message);
+      console.error(' POI enrichment failed:', error.message);
       
       // Return original itinerary with error info if enrichment fails
       return {
