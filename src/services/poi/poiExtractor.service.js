@@ -196,11 +196,15 @@ class POIExtractorService {
     // Determine POI category
     const category = this.classifyPOI(cleanName, activityCategory);
 
+    // Get city and country from tripContext - check both nested and flat structure
+    const city = tripContext.city || tripContext.destination?.city || tripContext.destination?.destination || 'Unknown';
+    const country = tripContext.country || tripContext.destination?.country || this.extractCountryFromDestination(tripContext.destination?.destination) || 'Unknown';
+
     return {
       type: 'poi',
       name: cleanName,
-      city: tripContext.destination?.city || tripContext.destination?.destination || 'Unknown',
-      country: tripContext.destination?.country || this.extractCountryFromDestination(tripContext.destination?.destination) || 'Unknown',
+      city: city,
+      country: country,
       category: category,
       confidence: this.calculateConfidence(cleanName, category, activityCategory),
       extractedFrom: 'text',
@@ -223,11 +227,15 @@ class POIExtractorService {
 
     const category = this.classifyPOI(placeName, activityCategory);
 
+    // Get city and country from tripContext - check both nested and flat structure
+    const city = tripContext.city || tripContext.destination?.city || tripContext.destination?.destination || 'Unknown';
+    const country = tripContext.country || tripContext.destination?.country || this.extractCountryFromDestination(tripContext.destination?.destination) || 'Unknown';
+
     return {
       type: 'poi',
       name: placeName,
-      city: tripContext.destination?.city || tripContext.destination?.destination || 'Unknown',
-      country: tripContext.destination?.country || this.extractCountryFromDestination(tripContext.destination?.destination) || 'Unknown',
+      city: city,
+      country: country,
       category: category,
       confidence: this.calculateConfidence(placeName, category, activityCategory),
       extractedFrom: 'location',
@@ -446,12 +454,14 @@ class POIExtractorService {
       return null;
     }
 
+    const destLower = destination.toLowerCase();
+    
     const countryPatterns = {
       'Vietnam': /vietnam|viet nam/i,
       'Japan': /japan|nippon/i,
       'Thailand': /thailand/i,
       'China': /china/i,
-      'Korea': /korea/i,
+      'South Korea': /south korea|korea/i,
       'Singapore': /singapore/i,
       'Malaysia': /malaysia/i,
       'Indonesia': /indonesia/i,
@@ -467,6 +477,22 @@ class POIExtractorService {
     for (const [country, pattern] of Object.entries(countryPatterns)) {
       if (pattern.test(destination)) {
         return country;
+      }
+    }
+
+    // If no pattern matches, try to extract from comma-separated format
+    const parts = destination.split(',');
+    if (parts.length > 1) {
+      const lastPart = parts[parts.length - 1].trim();
+      // Check if last part matches any country pattern
+      for (const [country, pattern] of Object.entries(countryPatterns)) {
+        if (pattern.test(lastPart)) {
+          return country;
+        }
+      }
+      // Return the last part as-is if it looks like a country (capitalized)
+      if (lastPart.length >= 3 && /^[A-Z]/.test(lastPart)) {
+        return lastPart;
       }
     }
 
