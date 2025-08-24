@@ -8,29 +8,31 @@ class PromptBuilder {
     this.templates = {
       itinerary: {
         header: "You are a professional travel planner. Create a detailed, day-by-day itinerary for the following trip:",
-        format: `Please create a detailed itinerary with the following format:
+        format: `Please return the itinerary as a single JSON object. Do not include any text outside of the JSON object.
+The JSON object should be an array of day objects, where each day object has a 'date' and a list of 'activities'.
+Each activity object must have the following properties: 'time', 'title', 'venue', 'address', 'category', and 'notes'.
 
-Day 1: [Date]
-09:00 - [Activity Name] at [Specific Location]
-11:30 - [Activity Name] at [Specific Location] 
-14:00 - [Activity Name] at [Specific Location]
-16:30 - [Activity Name] at [Specific Location]
-
-Day 2: [Date]
-[Continue same format...]
+Example JSON structure:
+\`\`\`json
+[{
+  "date": "YYYY-MM-DD",
+  "activities": [{
+    "time": "HH:MM",
+    "title": "Activity Title",
+    "venue": "Venue Name",
+    "address": "Venue Address",
+    "category": "Activity Category",
+    "notes": "Additional notes"
+  }]
+}]
+\`\`\`
 
 CRITICAL REQUIREMENTS for each activity:
-- Use EXACT venue names (e.g., "Ben Thanh Market", "Independence Palace", "War Remnants Museum")
-- Include SPECIFIC addresses (e.g., "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City")
-- NO generic terms like "this iconic landmark", "famous temple", or "Unknown"
-- Every location MUST be a real, searchable place name
-- Provide precise venue information that can be found on Google Maps or travel APIs
-- Brief description of what to expect
-- Consider travel time between locations
-- Mix of cultural sites, food experiences, and interests mentioned
-- Realistic timing and practical logistics
-
-Focus on authentic local experiences with REAL, SPECIFIC venue names and addresses.`
+- Use EXACT venue names (e.g., "Ben Thanh Market", "Independence Palace", "War Remnants Museum").
+- Include SPECIFIC addresses (e.g., "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City").
+- Every location MUST be a real, searchable place name.
+- The 'category' should be one of: 'cultural', 'food', 'shopping', 'nature', 'technology', 'leisure'.
+- Provide brief but informative 'notes'.`
       },
       optimization: {
         header: "Optimize the following trip schedule for better flow and efficiency:",
@@ -132,7 +134,7 @@ Focus on authentic local experiences with REAL, SPECIFIC venue names and address
     
     if (trip.itinerary && trip.itinerary.days) {
       trip.itinerary.days.forEach((day, index) => {
-        prompt += `Day ${index + 1} (${day.date ? day.date.toDateString() : 'Day ' + (index + 1)}):\n`;
+        prompt += `Day ${index + 1} (${day.date ? new Date(day.date).toDateString() : 'Day ' + (index + 1)}):\n`;
         if (day.activities) {
           day.activities.forEach(activity => {
             prompt += `- ${activity.time}: ${activity.title} at ${activity.location.name || activity.location}\n`;
@@ -407,7 +409,7 @@ CRITICAL REQUIREMENTS for each activity:
    * @param {Object} template - New template
    */
   updateTemplate(type, template) {
-    this.templates[type] = { ...this.templates[type], ...template };
+    this.templates[type] = { ...(this.templates[type] || {}), ...template };
   }
 
   /**

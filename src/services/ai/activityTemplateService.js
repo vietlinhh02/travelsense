@@ -276,7 +276,7 @@ class ActivityTemplateService {
         time: timeSlot.time,
         title: `Free Time - ${timeSlot.period.charAt(0).toUpperCase() + timeSlot.period.slice(1)} Exploration`,
         description: `Explore the local area at your own pace during ${timeSlot.period}`,
-        location: 'Local Area',
+        location: `Area around ${trip.destination.destination}`,
         address: '',
         coordinates: this._generateCoordinates(trip.destination.destination),
         duration: 90,

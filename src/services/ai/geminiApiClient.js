@@ -63,7 +63,11 @@ class GeminiApiClient {
       throw new Error('NO_VALID_API_KEY');
     }
 
-    const modelConfig = this.modelConfigs[model] || this.modelConfigs.flash;
+    const modelName = process.env.GEMINI_MODEL || model || 'gemini-1.5-flash-001';
+    const modelConfig = {
+      name: modelName,
+      endpoint: `${this.baseUrl}/${modelName}:generateContent`,
+    };
     const requestPayload = this._buildRequestPayload(prompt, options);
 
     console.log(`Making real Gemini API call to ${modelConfig.name}...`);
@@ -127,7 +131,7 @@ class GeminiApiClient {
       }],
       generationConfig: {
         ...this.defaultGenerationConfig,
-        ...options.generationConfig
+        ...(options.generationConfig || {})
       },
       safetySettings: options.safetySettings || this.safetySettings
     };
