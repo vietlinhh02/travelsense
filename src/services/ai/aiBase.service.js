@@ -54,19 +54,16 @@ class AIBaseService {
     const prompt = this.promptBuilder.buildItineraryPrompt(trip, { focus });
 
     // Call Gemini Pro for structured output
-    const response = await this._callGeminiAPI('pro', prompt);
+    const response = await this._callGeminiAPI('flash', prompt);
 
     // Process AI response using ResponseParser and fallback to templates
     let itinerary;
     try {
       itinerary = this.responseParser.processItineraryResponse(response.content, trip);
     } catch (fallbackError) {
-      if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
-        console.log(' Using ActivityTemplateService for standard itinerary generation...');
-        itinerary = this.templateService.generateTemplateBasedItinerary(trip);
-      } else {
-        throw fallbackError;
-      }
+      console.warn('AI response parsing failed:', fallbackError.message);
+      console.log(' Using ActivityTemplateService as fallback for standard itinerary generation...');
+      itinerary = this.templateService.generateTemplateBasedItinerary(trip);
     }
 
     return itinerary;

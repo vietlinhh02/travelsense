@@ -81,15 +81,28 @@ class AIItineraryService extends AIBaseService {
         const response = await this._callGeminiAPI('pro', prompt);
         totalTokensUsed = response.tokensUsed;
 
-        // Process AI response using ResponseParser and fallback to templates
+        // Process AI response using ResponseParser and retry AI if needed
         try {
           itinerary = this.responseParser.processItineraryResponse(response.content, trip);
-        } catch (fallbackError) {
-          if (fallbackError.message === 'FALLBACK_TO_TEMPLATE_REQUIRED') {
-            console.log(' Using ActivityTemplateService for itinerary generation...');
+        } catch (parseError) {
+          console.warn('AI response parsing failed:', parseError.message);
+          console.log(' Retrying AI generation with corrected prompt...');
+
+          // Try AI again with a more specific prompt
+          try {
+            const retryPrompt = this.promptBuilder.buildItineraryPrompt(trip, {
+              ...options,
+              retry: true,
+              formatEmphasis: 'Please ensure the response is VALID JSON only, no markdown or text'
+            });
+            const retryResponse = await this._callGeminiAPI('pro', retryPrompt);
+            itinerary = this.responseParser.processItineraryResponse(retryResponse.content, trip);
+            totalTokensUsed += retryResponse.tokensUsed;
+            console.log(' AI retry successful');
+          } catch (retryError) {
+            console.warn('AI retry failed:', retryError.message);
+            console.log(' Using ActivityTemplateService as last resort fallback...');
             itinerary = this.templateService.generateTemplateBasedItinerary(trip);
-          } else {
-            throw fallbackError;
           }
         }
       }

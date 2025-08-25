@@ -1,6 +1,5 @@
 const { AIInteractionLog, RateLimitTracker } = require('../../models/ai');
-const { Trip, TripDraft } = require('../../models/trips');
-const { tripDraftService } = require('../trips');
+const { Trip } = require('../../models/trips');
 const AIBaseService = require('./aiBase.service');
 
 /**
@@ -13,150 +12,24 @@ class AIChatService extends AIBaseService {
   }
 
   /**
-   * Extract trip information from chat message using AI and update TripDraft
-   * @param {string} userId - User ID
-   * @param {Object} chatData - Chat data with message and context
-   * @returns {Promise<Object>} Extracted trip information with draft status
+   * Initialize service with dependencies
+   * @param {Object} dependencies - Service dependencies
    */
-  async extractTripInfoFromChat(userId, chatData) {
-    const { message, context = {} } = chatData;
-    const startTime = Date.now();
-
-    try {
-      // Check rate limits for flash model
-      const rateLimitCheck = await RateLimitTracker.checkRateLimit(userId, 'flash');
-      if (!rateLimitCheck.allowed) {
-        throw new Error('RATE_LIMIT_EXCEEDED');
-      }
-
-      // Get or create active draft for user
-      const sessionId = context.sessionId;
-      const draft = await tripDraftService.getOrCreateActiveDraft(userId, sessionId);
-
-      // Build extraction prompt
-      const prompt = this.promptBuilder.buildExtractionPrompt(message, {
-        userDefaults: context.userDefaults || {},
-        existingData: draft.extracted
-      });
-
-      // Call Gemini API with structured output
-      const response = await this._callGeminiAPI('flash', prompt, {
-        responseSchema: {
-          type: "object",
-          properties: {
-            language: { type: "string" },
-            timezone: { type: "string" },
-            currency: { type: "string" },
-            intent: { type: "string", enum: ["create_trip", "modify_trip", "ask_info", "other"] },
-            extracted: {
-              type: "object",
-              properties: {
-                origin: { type: "string" },
-                destinations: { type: "array", items: { type: "string" } },
-                dates: { type: "object", properties: { start: { type: "string" }, end: { type: "string" } } },
-                duration: { type: "number" },
-                travelers: { type: "object", properties: { adults: { type: "number" }, children: { type: "number" }, infants: { type: "number" } } },
-                budget: { type: "object", properties: { total: { type: "number" }, currency: { type: "string" } } },
-                interests: { type: "array", items: { type: "string" } },
-                pace: { type: "string", enum: ["easy", "balanced", "intense"] },
-                nightlife: { type: "string", enum: ["none", "some", "heavy"] },
-                dayStart: { type: "string" },
-                dayEnd: { type: "string" },
-                quietMorningAfterLateNight: { type: "boolean" },
-                transportPrefs: { type: "array", items: { type: "string" } },
-                walkingLimitKm: { type: "number" },
-                dietary: { type: "array", items: { type: "string" } },
-                mobility: { type: "string", enum: ["none", "stroller", "wheelchair"] },
-                mustSee: { type: "array", items: { type: "string" } },
-                avoid: { type: "array", items: { type: "string" } },
-                notes: { type: "string" }
-              }
-            },
-            missing: { type: "array", items: { type: "string" } },
-            ambiguities: { type: "array", items: { type: "string" } }
-          },
-          required: ["language", "timezone", "currency", "intent", "extracted", "missing", "ambiguities"]
-        }
-      });
-
-      const processingTime = Date.now() - startTime;
-
-      // Try to parse JSON response
-      const extractedData = this.responseParser._tryParseJSON(response.content) || {
-        intent: "other",
-        extracted: {},
-        missing: ["parse_error"],
-        ambiguities: []
-      };
-
-      // Add user message to draft
-      await tripDraftService.addMessage(draft._id, 'user', message, extractedData);
-
-      // Update draft with extracted information
-      const updatedDraft = await tripDraftService.updateDraft(
-        draft._id,
-        extractedData.extracted,
-        extractedData.missing,
-        extractedData.ambiguities.map(ambiguity => ({
-          field: ambiguity,
-          issue: ambiguity,
-          suggestion: `Please clarify ${ambiguity}`
-        }))
-      );
-
-      // Log interaction
-      await this._logInteraction({
-        userId,
-        endpoint: 'extract-trip-info',
-        model: 'flash',
-        prompt,
-        responseContent: response.content,
-        tokensUsed: response.tokensUsed,
-        processingTime,
-        success: true,
-        metadata: {
-          intent: extractedData.intent,
-          missingFields: extractedData.missing?.length || 0,
-          draftId: draft._id,
-          readinessScore: updatedDraft.readinessScore
-        }
-      });
-
-      return {
-        ...extractedData,
-        draft: tripDraftService.getDraftSummary(updatedDraft),
-        tokensUsed: response.tokensUsed,
-        processingTime,
-        rateLimitRemaining: rateLimitCheck.remaining - 1
-      };
-
-    } catch (error) {
-      const processingTime = Date.now() - startTime;
-
-      await this._logInteraction({
-        userId,
-        endpoint: 'extract-trip-info',
-        model: 'flash',
-        prompt: message,
-        success: false,
-        error: error.message,
-        processingTime
-      });
-
-      throw error;
-    }
+  initialize(dependencies = {}) {
+    super.initialize(dependencies);
   }
 
+
+
   /**
-   * Chat with AI for trip planning ideation and suggestions
+   * Chat with AI for trip planning and information gathering
    * @param {string} userId - User ID
    * @param {Object} chatData - Chat request data
-   * @returns {Promise<Object>} AI response
+   * @returns {Promise<Object>} AI response with information gathering
    */
   async chatWithAI(userId, chatData) {
     const { message, context = {}, model = 'flash' } = chatData;
     const startTime = Date.now();
-    let prompt = 'Error occurred before prompt generation';
 
     try {
       // Check rate limits
@@ -165,98 +38,39 @@ class AIChatService extends AIBaseService {
         throw new Error('RATE_LIMIT_EXCEEDED');
       }
 
-      // Validate trip access if tripId provided
+      let responseContent = '';
+      let tokensUsed = 0;
+      let trip = null;
+
+      // If tripId is provided, get trip data and analyze what's missing
       if (context.tripId) {
-        const trip = await Trip.findById(context.tripId);
+        trip = await Trip.findById(context.tripId);
         if (!trip || !trip.isOwnedBy(userId)) {
           throw new Error('TRIP_ACCESS_DENIED');
         }
+
+        // Check what information is missing
+        const missingInfo = this._analyzeMissingTripInfo(trip);
+
+        if (missingInfo.length > 0) {
+          // Ask for missing information
+          responseContent = await this._askForMissingInfo(message, trip, missingInfo);
+        } else {
+          // All information is complete, provide helpful response
+          responseContent = await this._provideCompleteTripResponse(message, trip);
+        }
+
+        // Try to extract information from user message and update trip
+        const extractedInfo = await this._extractTripInfoFromMessage(message, trip);
+        if (extractedInfo && Object.keys(extractedInfo).length > 0) {
+          await this._updateTripWithExtractedInfo(trip._id, extractedInfo);
+          responseContent += '\n\n✅ Đã cập nhật thông tin chuyến đi!';
+        }
+
+      } else {
+        // General chat without trip context
+        responseContent = await this._handleGeneralChat(message);
       }
-
-      // Check if this is a trip creation intent
-      if (context.intent === 'create_plan' || context.intent === 'create_trip') {
-        // Extract trip information first
-        const extracted = await this.extractTripInfoFromChat(userId, { message, context });
-
-        // Check if draft is ready for trip creation
-        if (extracted.draft?.isReady) {
-          // Auto-generate itinerary if ready
-          try {
-            const itineraryResult = await this._generateItineraryFromExtracted(userId, extracted, context);
-
-            // Materialize draft into actual trip
-            const tripData = {
-              name: `Trip to ${extracted.extracted.destinations?.[0] || 'Destination'}`,
-              itinerary: itineraryResult.itinerary
-            };
-
-            const createdTrip = await tripDraftService.materializeDraft(extracted.draft.id, tripData);
-
-            return {
-              content: `Tuyệt vời! Tôi đã tạo chuyến đi hoàn chỉnh cho bạn. Chuyến đi "${createdTrip.name}" đã sẵn sàng với lịch trình chi tiết.`,
-              trip: {
-                id: createdTrip._id,
-                name: createdTrip.name,
-                destination: createdTrip.destination,
-                duration: createdTrip.duration
-              },
-              itinerary: itineraryResult.itinerary,
-              extracted,
-              autoCreated: true,
-              model: 'pro',
-              tokensUsed: (extracted.tokensUsed || 0) + (itineraryResult.tokensUsed || 0),
-              processingTime: Date.now() - startTime,
-              rateLimitRemaining: rateLimitCheck.remaining - 1
-            };
-          } catch (error) {
-            console.error('Auto trip creation failed:', error);
-            // Fall through to regular chat if auto-creation fails
-          }
-        }
-
-        // Return extracted info with next question
-        const nextQuestion = extracted.draft?.nextQuestion;
-        let responseContent = `Tôi đã hiểu yêu cầu của bạn. Bạn muốn đi ${extracted.extracted.destinations?.join(', ') || 'địa điểm nào đó'}.`;
-
-        if (extracted.missing?.length > 0) {
-          responseContent += `\n\nĐể tạo lịch trình hoàn chỉnh, tôi cần thêm thông tin:\n`;
-          extracted.missing.forEach(field => {
-            const fieldNames = {
-              destinations: 'điểm đến',
-              origin: 'điểm xuất phát',
-              dates: 'thời gian đi',
-              duration: 'số ngày đi',
-              travelers: 'số lượng người',
-              budget: 'ngân sách'
-            };
-            responseContent += `- ${fieldNames[field] || field}\n`;
-          });
-        }
-
-        if (nextQuestion) {
-          responseContent += `\n\n${nextQuestion}`;
-        }
-
-        return {
-          content: responseContent,
-          extracted,
-          needsMoreInfo: extracted.missing?.length > 0,
-          missingFields: extracted.missing || [],
-          ambiguities: extracted.ambiguities || [],
-          nextQuestion,
-          readinessScore: extracted.draft?.readinessScore || 0,
-          model: 'flash',
-          tokensUsed: extracted.tokensUsed || 0,
-          processingTime: Date.now() - startTime,
-          rateLimitRemaining: rateLimitCheck.remaining - 1
-        };
-      }
-
-      // Prepare conversation context using PromptBuilder
-      prompt = this.promptBuilder.buildConversationPrompt(message, context);
-
-      // Call Gemini API
-      const response = await this._callGeminiAPI(model, prompt);
 
       const processingTime = Date.now() - startTime;
 
@@ -266,19 +80,27 @@ class AIChatService extends AIBaseService {
         tripId: context.tripId,
         endpoint: 'chat',
         model,
-        prompt,
-        responseContent: response.content,
-        tokensUsed: response.tokensUsed,
+        prompt: message,
+        responseContent,
+        tokensUsed,
         processingTime,
-        success: true
+        success: true,
+        metadata: {
+          hasTripId: !!context.tripId,
+          hasTrip: !!trip
+        }
       });
 
       return {
-        content: response.content,
-        model: model,
-        tokensUsed: response.tokensUsed,
+        message: responseContent,
+        model,
+        tokensUsed,
         processingTime,
-        rateLimitRemaining: rateLimitCheck.remaining - 1
+        rateLimitRemaining: rateLimitCheck.remaining - 1,
+        workflow: {
+          hasTrip: !!trip,
+          infoComplete: trip ? this._analyzeMissingTripInfo(trip).length === 0 : false
+        }
       };
 
     } catch (error) {
@@ -290,7 +112,7 @@ class AIChatService extends AIBaseService {
         tripId: context.tripId,
         endpoint: 'chat',
         model,
-        prompt,
+        prompt: message,
         success: false,
         error: error.message,
         processingTime
@@ -301,62 +123,127 @@ class AIChatService extends AIBaseService {
   }
 
   /**
-   * Generate itinerary from extracted information
-   * @param {string} userId - User ID
-   * @param {Object} extracted - Extracted trip information
-   * @param {Object} context - Context data
-   * @returns {Promise<Object>} Generated itinerary
+   * Analyze what information is missing from the trip
+   * @param {Object} trip - Trip data
+   * @returns {Array} Array of missing information fields
    */
-  async _generateItineraryFromExtracted(userId, extracted, context = {}) {
-    // Create trip object from extracted data
-    const tripData = {
-      name: `Trip to ${extracted.extracted.destinations?.[0] || 'Destination'}`,
-      destination: {
-        origin: extracted.extracted.origin || 'Current Location',
-        destination: extracted.extracted.destinations?.[0] || 'Unknown',
-        startDate: extracted.extracted.dates?.start ? new Date(extracted.extracted.dates.start) : new Date(),
-        endDate: extracted.extracted.dates?.end ? new Date(extracted.extracted.dates.end) : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
-      },
-      duration: extracted.extracted.duration || 3,
-      travelers: extracted.extracted.travelers || { adults: 2, children: 0, infants: 0 },
-      budget: extracted.extracted.budget || null,
-      preferences: {
-        interests: extracted.extracted.interests || [],
-        constraints: extracted.extracted.avoid || []
-      }
+  _analyzeMissingTripInfo(trip) {
+    const missing = [];
+
+    if (!trip.destination?.destination) missing.push('destination');
+    if (!trip.destination?.startDate) missing.push('startDate');
+    if (!trip.destination?.endDate) missing.push('endDate');
+    if (!trip.travelers?.adults || trip.travelers.adults === 0) missing.push('travelers');
+    if (!trip.budget?.total || trip.budget.total === 0) missing.push('budget');
+
+    return missing;
+  }
+
+  /**
+   * Ask user for missing information
+   * @param {string} message - User message
+   * @param {Object} trip - Trip data
+   * @param {Array} missingInfo - Missing information fields
+   * @returns {Promise<string>} Response asking for missing info
+   */
+  async _askForMissingInfo(message, trip, missingInfo) {
+    const fieldNames = {
+      destination: 'điểm đến',
+      startDate: 'ngày khởi hành',
+      endDate: 'ngày kết thúc',
+      travelers: 'số lượng người',
+      budget: 'ngân sách'
     };
 
-    // Set duration based on dates if available
-    if (extracted.extracted.dates?.start && extracted.extracted.dates?.end) {
-      const start = new Date(extracted.extracted.dates.start);
-      const end = new Date(extracted.extracted.dates.end);
-      tripData.duration = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    let response = `Đã nhận thông tin chuyến đi "${trip.name}". `;
+
+    if (missingInfo.length > 0) {
+      response += `Để tạo lịch trình hoàn chỉnh, tôi cần thêm thông tin:\n`;
+      missingInfo.forEach(field => {
+        response += `• ${fieldNames[field] || field}\n`;
+      });
+      response += `\nBạn có thể cho tôi biết thêm không?`;
     }
 
-    // Create temporary trip-like object
-    const tempTrip = {
-      ...tripData,
-      isOwnedBy: () => true,
-      itinerary: { days: [] }
-    };
-
-    // Generate itinerary with enhanced preferences
-    const options = {
-      focus: context.focus,
-      pace: extracted.extracted.pace,
-      nightlife: extracted.extracted.nightlife,
-      dayStart: extracted.extracted.dayStart,
-      dayEnd: extracted.extracted.dayEnd,
-      quietMorningAfterLateNight: extracted.extracted.quietMorningAfterLateNight,
-      transportPrefs: extracted.extracted.transportPrefs,
-      walkingLimitKm: extracted.extracted.walkingLimitKm,
-      dietary: extracted.extracted.dietary,
-      mustSee: extracted.extracted.mustSee,
-      avoid: extracted.extracted.avoid
-    };
-
-    return await this.generateItinerary(userId, 'temp-trip-id', options);
+    return response;
   }
+
+  /**
+   * Provide response when trip information is complete
+   * @param {string} message - User message
+   * @param {Object} trip - Trip data
+   * @returns {Promise<string>} Helpful response
+   */
+  async _provideCompleteTripResponse(message, trip) {
+    return `Chuyến đi "${trip.name}" của bạn đã có đủ thông tin! 🎉\n\n📅 Thời gian: ${new Date(trip.destination.startDate).toLocaleDateString('vi-VN')} - ${new Date(trip.destination.endDate).toLocaleDateString('vi-VN')}\n📍 Điểm đến: ${trip.destination.destination}\n👥 Số người: ${trip.travelers.adults} người lớn${trip.travelers.children ? `, ${trip.travelers.children} trẻ em` : ''}\n💰 Ngân sách: ${trip.budget.total.toLocaleString()} ${trip.budget.currency}\n\nBạn có muốn tôi tạo lịch trình chi tiết không?`;
+  }
+
+  /**
+   * Handle general chat without trip context
+   * @param {string} message - User message
+   * @returns {Promise<string>} General response
+   */
+  async _handleGeneralChat(message) {
+    return `Xin chào! Tôi có thể giúp bạn lập kế hoạch du lịch. Bạn muốn đi đâu và khi nào?`;
+  }
+
+  /**
+   * Extract trip information from user message
+   * @param {string} message - User message
+   * @param {Object} trip - Current trip data
+   * @returns {Promise<Object>} Extracted information
+   */
+  async _extractTripInfoFromMessage(message, trip) {
+    // Simple extraction logic - can be enhanced with AI
+    const extractedInfo = {};
+    const lowerMessage = message.toLowerCase();
+
+    // Extract budget (simple pattern matching)
+    const budgetMatch = message.match(/(\d+(?:\.\d+)?)\s*(triệu|tr|k|vnd|usd|đ)/i);
+    if (budgetMatch && !trip.budget?.total) {
+      const amount = parseFloat(budgetMatch[1]);
+      const currency = budgetMatch[2].toLowerCase();
+      extractedInfo.budget = {
+        total: currency.includes('triệu') || currency.includes('tr') ? amount * 1000000 : amount,
+        currency: currency.includes('usd') ? 'USD' : 'VND'
+      };
+    }
+
+    // Extract number of travelers
+    const travelerMatch = message.match(/(\d+)\s*người/i);
+    if (travelerMatch && (!trip.travelers?.adults || trip.travelers.adults === 0)) {
+      extractedInfo.travelers = {
+        adults: parseInt(travelerMatch[1]),
+        children: 0,
+        infants: 0
+      };
+    }
+
+    return extractedInfo;
+  }
+
+  /**
+   * Update trip with extracted information
+   * @param {string} tripId - Trip ID
+   * @param {Object} extractedInfo - Information to update
+   * @returns {Promise<void>}
+   */
+  async _updateTripWithExtractedInfo(tripId, extractedInfo) {
+    const updateData = {};
+
+    if (extractedInfo.budget) {
+      updateData.budget = extractedInfo.budget;
+    }
+
+    if (extractedInfo.travelers) {
+      updateData.travelers = extractedInfo.travelers;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await Trip.findByIdAndUpdate(tripId, updateData);
+    }
+  }
+
 }
 
 module.exports = AIChatService;
