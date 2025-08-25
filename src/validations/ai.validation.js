@@ -1,5 +1,44 @@
 const { body, param, query } = require('express-validator');
 
+// Extract trip info validation
+const extractTripInfoValidation = [
+  body('message')
+    .notEmpty()
+    .withMessage('Message is required')
+    .isLength({ min: 1, max: 1000 })
+    .withMessage('Message must be between 1 and 1000 characters'),
+
+  body('context')
+    .optional()
+    .isObject()
+    .withMessage('Context must be an object'),
+
+  body('context.intent')
+    .optional()
+    .isIn(['create_trip', 'modify_trip', 'ask_info', 'other'])
+    .withMessage('Intent must be one of: create_trip, modify_trip, ask_info, other'),
+
+  body('userDefaults')
+    .optional()
+    .isObject()
+    .withMessage('User defaults must be an object'),
+
+  body('userDefaults.language')
+    .optional()
+    .isIn(['vi', 'en'])
+    .withMessage('Language must be either "vi" or "en"'),
+
+  body('userDefaults.timezone')
+    .optional()
+    .isString()
+    .withMessage('Timezone must be a string'),
+
+  body('userDefaults.currency')
+    .optional()
+    .isString()
+    .withMessage('Currency must be a string')
+];
+
 // Chat with AI validation
 const chatWithAIValidation = [
   body('message')
@@ -7,17 +46,22 @@ const chatWithAIValidation = [
     .withMessage('Message is required')
     .isLength({ min: 1, max: 2000 })
     .withMessage('Message must be between 1 and 2000 characters'),
-  
+
   body('context')
     .optional()
     .isObject()
     .withMessage('Context must be an object'),
-  
+
   body('context.tripId')
     .optional()
     .isMongoId()
     .withMessage('Trip ID must be a valid MongoDB ObjectId'),
-  
+
+  body('context.intent')
+    .optional()
+    .isIn(['create_trip', 'modify_trip', 'ask_info', 'other'])
+    .withMessage('Intent must be one of: create_trip, modify_trip, ask_info, other'),
+
   body('context.conversationHistory')
     .optional()
     .isArray()
@@ -28,7 +72,7 @@ const chatWithAIValidation = [
       }
       return true;
     }),
-  
+
   body('model')
     .optional()
     .isIn(['flash', 'pro'])
@@ -40,12 +84,98 @@ const generateItineraryValidation = [
   param('tripId')
     .isMongoId()
     .withMessage('Trip ID must be a valid MongoDB ObjectId'),
-  
+
   body('focus')
     .optional()
     .isString()
     .isLength({ max: 200 })
-    .withMessage('Focus must be a string with maximum 200 characters')
+    .withMessage('Focus must be a string with maximum 200 characters'),
+
+  body('pace')
+    .optional()
+    .isIn(['easy', 'balanced', 'intense'])
+    .withMessage('Pace must be one of: easy, balanced, intense'),
+
+  body('nightlife')
+    .optional()
+    .isIn(['none', 'some', 'heavy'])
+    .withMessage('Nightlife must be one of: none, some, heavy'),
+
+  body('dayStart')
+    .optional()
+    .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Day start must be in HH:MM format'),
+
+  body('dayEnd')
+    .optional()
+    .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Day end must be in HH:MM format'),
+
+  body('quietMorningAfterLateNight')
+    .optional()
+    .isBoolean()
+    .withMessage('Quiet morning after late night must be a boolean'),
+
+  body('transportPrefs')
+    .optional()
+    .isArray()
+    .withMessage('Transport preferences must be an array')
+    .custom((prefs) => {
+      if (prefs.length > 10) {
+        throw new Error('Maximum of 10 transport preferences allowed');
+      }
+      if (!prefs.every(pref => typeof pref === 'string' && pref.length <= 50)) {
+        throw new Error('Each transport preference must be a string with maximum 50 characters');
+      }
+      return true;
+    }),
+
+  body('walkingLimitKm')
+    .optional()
+    .isFloat({ min: 0, max: 20 })
+    .withMessage('Walking limit must be a number between 0 and 20'),
+
+  body('dietary')
+    .optional()
+    .isArray()
+    .withMessage('Dietary preferences must be an array')
+    .custom((prefs) => {
+      if (prefs.length > 10) {
+        throw new Error('Maximum of 10 dietary preferences allowed');
+      }
+      if (!prefs.every(pref => typeof pref === 'string' && pref.length <= 50)) {
+        throw new Error('Each dietary preference must be a string with maximum 50 characters');
+      }
+      return true;
+    }),
+
+  body('mustSee')
+    .optional()
+    .isArray()
+    .withMessage('Must see list must be an array')
+    .custom((items) => {
+      if (items.length > 20) {
+        throw new Error('Maximum of 20 must-see items allowed');
+      }
+      if (!items.every(item => typeof item === 'string' && item.length <= 100)) {
+        throw new Error('Each must-see item must be a string with maximum 100 characters');
+      }
+      return true;
+    }),
+
+  body('avoid')
+    .optional()
+    .isArray()
+    .withMessage('Avoid list must be an array')
+    .custom((items) => {
+      if (items.length > 20) {
+        throw new Error('Maximum of 20 avoid items allowed');
+      }
+      if (!items.every(item => typeof item === 'string' && item.length <= 100)) {
+        throw new Error('Each avoid item must be a string with maximum 100 characters');
+      }
+      return true;
+    })
 ];
 
 // Optimize schedule validation
@@ -128,6 +258,7 @@ const getInteractionStatsValidation = [
 ];
 
 module.exports = {
+  extractTripInfoValidation,
   chatWithAIValidation,
   generateItineraryValidation,
   optimizeScheduleValidation,
