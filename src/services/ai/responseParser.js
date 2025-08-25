@@ -1,31 +1,36 @@
 /**
- * ResponseParser - Handles parsing and processing of AI responses
- * Responsible for: Itinerary parsing, activity extraction, response validation, mock generation
+ * ResponseParser - Simplified parser for fallback and validation
+ * Now mainly used for: Validation, fallback parsing, and complex itinerary processing
+ *
+ * NOTE: Most parsing is now handled by Gemini's structured output directly
  */
 class ResponseParser {
   constructor() {
-    // Common activity categories for classification
+    // Minimal categories for fallback
     this.activityCategories = {
-      cultural: ['temple', 'shrine', 'museum', 'palace', 'cathedral', 'monument', 'heritage'],
-      food: ['restaurant', 'market', 'food', 'cuisine', 'meal', 'dining', 'cafe', 'coffee'],
-      shopping: ['shop', 'market', 'mall', 'boutique', 'souvenir', 'store'],
-      nature: ['park', 'garden', 'river', 'mountain', 'beach', 'forest', 'nature'],
-      technology: ['tower', 'observatory', 'digital', 'tech', 'innovation'],
-      leisure: ['free time', 'exploration', 'relax', 'entertainment']
+      cultural: ['temple', 'museum', 'palace'],
+      food: ['restaurant', 'food', 'cafe'],
+      nature: ['park', 'mountain', 'beach'],
+      shopping: ['shop', 'mall'],
+      leisure: ['relax', 'entertainment']
     };
   }
 
   /**
-   * Main method to process itinerary response (JSON only)
+   * Fallback method for itinerary parsing (when structured output fails)
    * @param {string} content - AI response content (JSON)
    * @param {Object} trip - Trip object
    * @returns {Object} Processed itinerary
    */
   processItineraryResponse(content, trip) {
-    // Parse as JSON (structured output)
     const jsonData = this._tryParseJSON(content);
     if (!jsonData) {
       throw new Error('Invalid JSON response from AI');
+    }
+
+    // For structured output, return as-is if it's already in correct format
+    if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0].date) {
+      return { days: jsonData };
     }
 
     const parsedItinerary = this._parseJSONItineraryResponse(jsonData, trip);
@@ -33,16 +38,16 @@ class ResponseParser {
       throw new Error('Empty or invalid itinerary data');
     }
 
-    console.log('Successfully parsed JSON itinerary response');
+    console.log('Successfully parsed fallback itinerary response');
     return parsedItinerary;
   }
 
 
 
   /**
-   * Process chunked itinerary response for long trips (JSON only)
+   * Process chunked itinerary response (simplified for long trips)
    * @param {string} content - AI response content (JSON)
-   * @param {Object} trip - Trip object (chunk-specific)
+   * @param {Object} trip - Trip object
    * @param {Object} chunk - Chunk configuration
    * @returns {Object} Processed chunk itinerary
    */
@@ -52,13 +57,11 @@ class ResponseParser {
       throw new Error(`Invalid JSON response for chunk ${chunk.id}`);
     }
 
-    const parsedItinerary = this._parseJSONItineraryResponse(jsonData, trip);
-    if (!parsedItinerary || !parsedItinerary.days || parsedItinerary.days.length === 0) {
-      throw new Error(`Empty itinerary for chunk ${chunk.id}`);
-    }
+    // Return as-is if already in correct format
+    if (jsonData.days) return jsonData;
 
-    console.log(`Successfully parsed chunked JSON response for ${chunk.id}`);
-    return parsedItinerary;
+    console.log(`Successfully parsed chunk ${chunk.id} (fallback)`);
+    return this._parseJSONItineraryResponse(jsonData, trip);
   }
 
 
@@ -70,7 +73,7 @@ class ResponseParser {
 
 
   /**
-   * Process validation response (JSON only)
+   * Process validation response (simplified)
    * @param {string} content - AI response content (JSON)
    * @returns {Object} Validation results
    */
@@ -80,12 +83,11 @@ class ResponseParser {
     return {
       valid: true,
       violations: [],
-      warnings: [],
-        suggestions: ['Unable to parse validation response']
+        warnings: ['Unable to parse validation response'],
+        suggestions: []
       };
     }
 
-    // Return the parsed validation data
     return {
       valid: jsonData.valid !== false,
       violations: jsonData.violations || [],
@@ -95,15 +97,14 @@ class ResponseParser {
   }
 
   /**
-   * Process suggestion response (JSON only)
+   * Process suggestion response (simplified)
    * @param {string} content - AI response content (JSON)
    * @returns {Array} Activity suggestions
    */
   processSuggestionResponse(content) {
     const jsonData = this._tryParseJSON(content);
     if (!jsonData) {
-      return [
-        {
+      return [{
           title: 'Unable to parse suggestions',
           description: 'Please try again',
           category: 'general',
@@ -111,36 +112,20 @@ class ResponseParser {
           estimatedCost: 0,
           location: 'TBD',
           tags: ['error']
-        }
-      ];
+      }];
     }
 
-    // Return the parsed suggestions array
-    if (Array.isArray(jsonData)) {
-      return jsonData;
-    }
-
-    // If it's an object with suggestions property
+    // Return as-is if already in correct format
+    if (Array.isArray(jsonData)) return jsonData;
     if (jsonData.suggestions && Array.isArray(jsonData.suggestions)) {
       return jsonData.suggestions;
     }
 
-    // Fallback
-    return [
-      {
-        title: jsonData.title || 'AI-suggested Activity',
-        description: jsonData.description || 'Based on your preferences',
-        category: jsonData.category || 'general',
-        duration: jsonData.duration || 120,
-        estimatedCost: jsonData.cost || jsonData.estimatedCost || 0,
-        location: jsonData.location || 'City Center',
-        tags: jsonData.tags || ['ai-generated']
-      }
-    ];
+    return [jsonData]; // Single suggestion
   }
 
   /**
-   * Process optimization response (JSON only)
+   * Process optimization response (simplified)
    * @param {string} content - AI response content (JSON)
    * @param {Object} trip - Trip object
    * @returns {Object} Processed itinerary
@@ -151,13 +136,10 @@ class ResponseParser {
       throw new Error('Invalid JSON response for optimization');
     }
 
-    const parsedItinerary = this._parseJSONItineraryResponse(jsonData, trip);
-    if (!parsedItinerary || !parsedItinerary.days || parsedItinerary.days.length === 0) {
-      throw new Error('Empty or invalid optimized itinerary');
-    }
+    // Return as-is if already in correct format
+    if (jsonData.days) return jsonData;
 
-    console.log('Successfully parsed optimization JSON response');
-    return parsedItinerary;
+    return this._parseJSONItineraryResponse(jsonData, trip);
   }
 
 
@@ -196,14 +178,46 @@ class ResponseParser {
   _tryParseJSON(content) {
     if (!content || typeof content !== 'string') return null;
 
+    // Check for common error messages that AI might return
+    const errorMessages = [
+      'No content generated',
+      'Unable to generate',
+      'Error',
+      'Failed to',
+      'Cannot generate'
+    ];
+
+    const lowerContent = content.toLowerCase();
+    if (errorMessages.some(msg => lowerContent.includes(msg.toLowerCase()))) {
+      console.warn('AI returned error message instead of JSON:', content);
+      return null;
+    }
+
     try {
       // Try to extract JSON from markdown code blocks first
-      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/i);
-      const jsonString = jsonMatch ? jsonMatch[1] : content;
+      let jsonString = content.trim();
 
+      // Check for markdown code blocks
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/i);
+      if (jsonMatch) {
+        jsonString = jsonMatch[1].trim();
+      }
+
+      // Find the start and end of JSON array/object
+      const startIndex = jsonString.indexOf('[');
+      const endIndex = jsonString.lastIndexOf(']');
+
+      if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+        // Extract just the JSON part
+        const cleanJsonString = jsonString.substring(startIndex, endIndex + 1);
+        return JSON.parse(cleanJsonString);
+      }
+
+      // Fallback: try to parse the entire string
       return JSON.parse(jsonString);
     } catch (error) {
       console.warn('Failed to parse JSON from response:', error.message);
+      console.warn('Content preview:', content.substring(0, 100) + '...');
       return null;
     }
   }
@@ -225,14 +239,14 @@ class ResponseParser {
         activities: day.activities.map(activity => ({
           time: activity.time,
           title: activity.title,
-          description: activity.notes,
+          description: activity.description || activity.notes || 'AI-generated activity',
         location: {
-            name: activity.venue,
-            address: activity.address,
-          coordinates: this._generateCoordinates(trip.destination.destination)
+          name: activity.location?.name || activity.venue || activity.title,
+          address: activity.location?.address || activity.address || `${activity.title}, ${trip.destination.destination}`,
+          coordinates: activity.location?.coordinates || this._generateCoordinates(trip.destination.destination)
         },
-          duration: this._estimateActivityDuration(activity.notes),
-          cost: this._estimateActivityCost(activity.notes, trip),
+          duration: activity.duration || 120, // Default 2 hours
+          cost: activity.cost || 0, // Default free
           category: activity.category,
           notes: 'Generated by Gemini AI'
         }))
@@ -243,169 +257,279 @@ class ResponseParser {
   }
 
   /**
-   * Validate itinerary against preferences and constraints
+   * Simple itinerary validation with date checking
    * @param {Object} itinerary - Itinerary to validate
+   * @param {Object} trip - Trip object for date validation
    * @param {Object} prefs - User preferences
-   * @returns {Object} Validation result with issues
+   * @returns {Object} Validation result
    */
-  validateItinerary(itinerary, prefs = {}) {
-    const issues = [];
-
-    if (!itinerary || !itinerary.days || itinerary.days.length === 0) {
-      issues.push({ type: 'empty', message: 'Itinerary has no days' });
-      return { ok: false, issues };
+  validateItinerary(itinerary, trip = null, prefs = {}) {
+    if (!itinerary || !Array.isArray(itinerary) || itinerary.length === 0) {
+      return { ok: false, issues: [{ type: 'empty', message: 'No itinerary data' }] };
     }
 
-    itinerary.days.forEach((day, dayIndex) => {
-      if (!day.activities || day.activities.length === 0) {
-        issues.push({ type: 'empty_day', message: `Day ${dayIndex + 1} has no activities` });
+    const issues = [];
+    const expectedDates = [];
+
+    // Calculate expected dates if trip is provided
+    if (trip && trip.destination && trip.destination.startDate && trip.duration) {
+      const startDate = new Date(trip.destination.startDate);
+      for (let i = 0; i < trip.duration; i++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + i);
+        expectedDates.push(date.toISOString().split('T')[0]);
+      }
+    }
+
+    itinerary.forEach((day, dayIndex) => {
+      // Check date format and validity
+      if (!day.date) {
+        issues.push({ type: 'missing_date', message: `Day ${dayIndex + 1} missing date` });
+      } else {
+        // Validate date format (YYYY-MM-DD)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(day.date)) {
+          issues.push({ type: 'invalid_date_format', message: `Day ${dayIndex + 1} has invalid date format: ${day.date}` });
+        }
+
+        // Check if date is in expected range
+        if (expectedDates.length > 0 && !expectedDates.includes(day.date)) {
+          issues.push({
+            type: 'date_out_of_range',
+            message: `Day ${dayIndex + 1} date ${day.date} not in trip range: ${expectedDates.join(', ')}`
+          });
+        }
+
+        // Check if date is not in the past (only for trips starting in future)
+        if (trip && trip.destination && trip.destination.startDate) {
+          const tripStartDate = new Date(trip.destination.startDate);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          // Only check past date for trips starting more than 30 days in future
+          const thirtyDaysFromNow = new Date(today);
+          thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+          if (tripStartDate > thirtyDaysFromNow) {
+            const dayDate = new Date(day.date);
+            if (dayDate < today) {
+          issues.push({
+                type: 'past_date',
+                message: `Day ${dayIndex + 1} date ${day.date} is in the past but trip starts ${tripStartDate.toISOString().split('T')[0]}`
+              });
+            }
+          }
+        }
       }
 
-      day.activities.forEach((activity, activityIndex) => {
-        // Check venue and address
-        if (!activity.location?.name || this._isGenericLocationName(activity.location.name)) {
+      // Check activities
+      if (!day.activities || !Array.isArray(day.activities) || day.activities.length === 0) {
+        issues.push({ type: 'empty_day', message: `Day ${dayIndex + 1} has no activities` });
+      } else {
+        day.activities.forEach((activity, activityIndex) => {
+          if (!activity.title || !activity.location || !activity.category) {
           issues.push({
-            type: 'generic_venue',
-            message: `Activity ${activityIndex + 1} on day ${dayIndex + 1} has generic venue name`,
-            day: dayIndex,
-            activity: activityIndex
-          });
-        }
-
-        // Check time within preferences
-        if (prefs.dayStart && activity.time < prefs.dayStart) {
-          issues.push({
-            type: 'early_activity',
-            message: `Activity ${activityIndex + 1} on day ${dayIndex + 1} starts before preferred day start`,
-            day: dayIndex,
-            activity: activityIndex
-          });
-        }
-
-        if (prefs.dayEnd && activity.time > prefs.dayEnd) {
-          issues.push({
-            type: 'late_activity',
-            message: `Activity ${activityIndex + 1} on day ${dayIndex + 1} starts after preferred day end`,
-            day: dayIndex,
-            activity: activityIndex
-          });
-        }
-
-        // Check nightlife preference
-        if (prefs.nightlife === 'none' && activity.category === 'nightlife') {
-          issues.push({
-            type: 'nightlife_preference',
-            message: `Nightlife activity found but user prefers no nightlife`,
-            day: dayIndex,
-            activity: activityIndex
-          });
-        }
-
-        if (prefs.nightlife === 'heavy' && !this._hasNightlifeActivity(day)) {
-          issues.push({
-            type: 'missing_nightlife',
-            message: `Day ${dayIndex + 1} missing nightlife activity despite heavy preference`,
-            day: dayIndex
+              type: 'incomplete_activity',
+              message: `Activity ${activityIndex + 1} on day ${dayIndex + 1} missing required fields`
           });
         }
       });
+      }
     });
 
     return { ok: issues.length === 0, issues };
   }
 
   /**
-   * Check if day has nightlife activity
-   * @param {Object} day - Day object
-   * @returns {boolean} True if has nightlife
+   * Process structured output response (JSON format)
+   * @param {string} content - AI response content
+   * @param {Object} schema - Schema definition used for the request
+   * @returns {Object} Parsed structured response
    */
-  _hasNightlifeActivity(day) {
-    return day.activities.some(activity =>
-      activity.category === 'nightlife' ||
-      activity.time >= '21:00' ||
-      activity.title.toLowerCase().includes('night') ||
-      activity.title.toLowerCase().includes('bar') ||
-      activity.title.toLowerCase().includes('club')
-    );
-  }
-
-  /**
-   * Generate auto-repair prompt for itinerary issues
-   * @param {Array} issues - Array of validation issues
-   * @param {Object} originalItinerary - Original itinerary
-   * @param {Object} prefs - User preferences
-   * @returns {string} Repair prompt
-   */
-  autoRepairPrompt(issues, originalItinerary, prefs = {}) {
-    let prompt = `Fix the following issues in this itinerary:\n\n`;
-
-    prompt += `Original itinerary:\n${JSON.stringify(originalItinerary, null, 2)}\n\n`;
-
-    prompt += `Issues to fix:\n`;
-    issues.forEach((issue, index) => {
-      prompt += `${index + 1}. ${issue.message}\n`;
-    });
-
-    prompt += `\nUser preferences:\n${JSON.stringify(prefs, null, 2)}\n\n`;
-
-    prompt += `Please provide a corrected itinerary in the same JSON format, addressing all the issues above.`;
-
-    return prompt;
-  }
-
-  /**
-   * Clean location name by removing common prefixes and suffixes
-   * @param {string} location - Raw location string
-   * @returns {string} Cleaned location name
-   */
-  _cleanLocationName(location) {
-    if (!location) return location;
-    
-    return location
-      .replace(/^(the|a|an)\s+/i, '') // Remove articles
-      .replace(/\s+(area|district|neighborhood|zone)$/i, '') // Remove generic suffixes
-      .replace(/\s+(in|at|near)\s+.*/i, '') // Remove location descriptions
-      .trim();
-  }
-
-  /**
-   * Check if location name is too generic to be useful for API searches
-   * @param {string} location - Location name to check
-   * @returns {boolean} True if location is generic
-   */
-  _isGenericLocationName(location) {
-    if (!location || location.length < 3) return true;
-    
-    const genericTerms = [
-      'this', 'that', 'the', 'a', 'an',
-      'iconic', 'famous', 'popular', 'renowned', 'well-known',
-      'landmark', 'attraction', 'site', 'place', 'spot', 'venue',
-      'temple', 'museum', 'market', 'restaurant', 'shop', 'mall',
-      'park', 'garden', 'beach', 'mountain', 'river', 'lake',
-      'unknown', 'various', 'local', 'nearby', 'area', 'vicinity',
-      'around', 'general', 'different', 'several', 'multiple'
-    ];
-    
-    const locationLower = location.toLowerCase();
-    
-    // Check if location is just a generic term
-    if (genericTerms.includes(locationLower)) return true;
-    
-    // Check if location starts with generic phrases
-    const genericPhrases = [
-      'this iconic', 'this famous', 'this popular', 'this renowned',
-      'the iconic', 'the famous', 'the popular', 'the renowned',
-      'a famous', 'a popular', 'an iconic', 'a renowned',
-      'famous landmark', 'iconic landmark', 'popular attraction',
-      'well-known', 'renowned', 'historic site'
-    ];
-    
-    for (const phrase of genericPhrases) {
-      if (locationLower.startsWith(phrase)) return true;
+  processStructuredOutput(content, schema = null) {
+    const parsedData = this._tryParseJSON(content);
+    if (!parsedData) {
+      throw new Error('Invalid structured output response from AI');
     }
-    
-    return false;
+
+    // Basic validation if schema is provided
+    if (schema) {
+      const validation = this.validateStructuredResponse(parsedData, schema);
+      if (!validation.valid) {
+        console.warn('Structured response validation warnings:', validation.warnings);
+      }
+    }
+
+    console.log('Successfully parsed structured output response');
+    return parsedData;
   }
+
+  /**
+   * Process enum response
+   * @param {string} content - AI response content (enum value)
+   * @param {Array} allowedValues - Array of allowed enum values
+   * @returns {string} Validated enum value
+   */
+  processEnumResponse(content, allowedValues = null) {
+    if (!content || typeof content !== 'string') {
+      throw new Error('Invalid enum response: content must be a string');
+    }
+
+    const enumValue = content.trim();
+
+    // Validate against allowed values if provided
+    if (allowedValues && Array.isArray(allowedValues)) {
+      if (!allowedValues.includes(enumValue)) {
+        console.warn(`Enum value '${enumValue}' not in allowed values: ${allowedValues.join(', ')}`);
+        // Return the closest match or the first allowed value
+        return allowedValues[0];
+      }
+    }
+
+    console.log(`Successfully processed enum response: ${enumValue}`);
+    return enumValue;
+  }
+
+  /**
+   * Validate structured response against schema
+   * @param {any} data - Parsed response data
+   * @param {Object} schema - Schema definition
+   * @returns {Object} Validation result
+   */
+  validateStructuredResponse(data, schema) {
+    const warnings = [];
+
+    if (!schema) {
+      return { valid: true, warnings: [] };
+    }
+
+    // Basic type validation
+    switch (schema.type) {
+      case 'STRING':
+        if (typeof data !== 'string') {
+          warnings.push(`Expected string, got ${typeof data}`);
+        }
+        // Check enum if specified
+        if (schema.enum && !schema.enum.includes(data)) {
+          warnings.push(`Value '${data}' not in enum: ${schema.enum.join(', ')}`);
+        }
+        break;
+
+      case 'INTEGER':
+        if (!Number.isInteger(data)) {
+          warnings.push(`Expected integer, got ${typeof data}`);
+        }
+        if (schema.minimum !== undefined && data < schema.minimum) {
+          warnings.push(`Value ${data} below minimum ${schema.minimum}`);
+        }
+        if (schema.maximum !== undefined && data > schema.maximum) {
+          warnings.push(`Value ${data} above maximum ${schema.maximum}`);
+        }
+        break;
+
+      case 'NUMBER':
+        if (typeof data !== 'number') {
+          warnings.push(`Expected number, got ${typeof data}`);
+        }
+        if (schema.minimum !== undefined && data < schema.minimum) {
+          warnings.push(`Value ${data} below minimum ${schema.minimum}`);
+        }
+        if (schema.maximum !== undefined && data > schema.maximum) {
+          warnings.push(`Value ${data} above maximum ${schema.maximum}`);
+        }
+        break;
+
+      case 'BOOLEAN':
+        if (typeof data !== 'boolean') {
+          warnings.push(`Expected boolean, got ${typeof data}`);
+        }
+        break;
+
+      case 'ARRAY':
+        if (!Array.isArray(data)) {
+          warnings.push(`Expected array, got ${typeof data}`);
+        } else {
+          if (schema.minItems !== undefined && data.length < schema.minItems) {
+            warnings.push(`Array length ${data.length} below minimum ${schema.minItems}`);
+          }
+          if (schema.maxItems !== undefined && data.length > schema.maxItems) {
+            warnings.push(`Array length ${data.length} above maximum ${schema.maxItems}`);
+          }
+          // Validate array items if schema provided
+          if (schema.items && data.length > 0) {
+            data.forEach((item, index) => {
+              const itemValidation = this.validateStructuredResponse(item, schema.items);
+              if (!itemValidation.valid) {
+                warnings.push(`Item ${index}: ${itemValidation.warnings.join(', ')}`);
+              }
+            });
+          }
+        }
+        break;
+
+      case 'OBJECT':
+        if (typeof data !== 'object' || data === null) {
+          warnings.push(`Expected object, got ${typeof data}`);
+        } else {
+          // Check required properties
+          if (schema.required) {
+            schema.required.forEach(prop => {
+              if (!(prop in data)) {
+                warnings.push(`Missing required property: ${prop}`);
+              }
+            });
+          }
+          // Validate property types
+          if (schema.properties) {
+            Object.entries(schema.properties).forEach(([prop, propSchema]) => {
+              if (prop in data) {
+                const propValidation = this.validateStructuredResponse(data[prop], propSchema);
+                if (!propValidation.valid) {
+                  warnings.push(`Property ${prop}: ${propValidation.warnings.join(', ')}`);
+                }
+              }
+            });
+          }
+        }
+        break;
+    }
+
+    return {
+      valid: warnings.length === 0,
+      warnings
+    };
+  }
+
+  /**
+   * Extract and validate structured data from response content
+   * @param {string} content - Raw response content
+   * @param {string} responseType - Type of structured response ('json' or 'enum')
+   * @param {Object} schema - Schema definition for validation
+   * @returns {any} Processed and validated response
+   */
+  extractStructuredData(content, responseType = 'json', schema = null) {
+    try {
+      switch (responseType) {
+        case 'json':
+        case 'application/json':
+          return this.processStructuredOutput(content, schema);
+
+        case 'enum':
+        case 'text/x.enum':
+          const allowedValues = schema?.enum || null;
+          return this.processEnumResponse(content, allowedValues);
+
+        default:
+          console.warn(`Unknown response type: ${responseType}, treating as JSON`);
+          return this.processStructuredOutput(content, schema);
+      }
+    } catch (error) {
+      console.error(`Error processing ${responseType} response:`, error.message);
+      throw error;
+    }
+  }
+
+    // Removed complex utility methods - simplified for structured output
 }
 
 module.exports = ResponseParser;
