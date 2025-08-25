@@ -18,7 +18,7 @@ class GeminiApiClient {
       },
       pro: {
         name: 'gemini-2.5-pro',
-        endpoint: `${this.baseUrl}/gemini-2.5-pro:generateContent`
+        endpoint: `${this.baseUrl}/gemini-2.5-flash:generateContent`
       }
     };
 
@@ -81,19 +81,96 @@ class GeminiApiClient {
   }
 
   /**
+   * Call Gemini API with structured output (JSON or enum)
+   * @param {string} model - Model type ('flash' or 'pro')
+   * @param {string} prompt - Prompt to send
+   * @param {Object} structuredConfig - Structured output configuration
+   * @param {Object} options - Additional options
+   * @returns {Promise<Object>} Structured API response
+   */
+  async callGeminiWithStructuredOutput(model, prompt, structuredConfig, options = {}) {
+    if (!this.hasValidApiKey()) {
+      console.warn(' No valid Gemini API key found.');
+      throw new Error('NO_VALID_API_KEY');
+    }
+
+    // Validate structured configuration
+    if (!structuredConfig) {
+      throw new Error('Structured configuration is required');
+    }
+
+    // Merge structured config with options
+    const enhancedOptions = {
+      ...options,
+      responseSchema: structuredConfig
+    };
+
+    const modelConfig = this.modelConfigs[model] || this.modelConfigs.flash;
+    const requestPayload = this._buildRequestPayload(prompt, enhancedOptions);
+
+    console.log(`Making structured output call to ${modelConfig.name}...`);
+    console.log(`Response type: ${structuredConfig.responseMimeType || 'application/json'}`);
+
+          const response = await this._executeWithRetry(modelConfig, requestPayload, true);
+
+      // Validate structured response
+      if (structuredConfig.responseMimeType === 'text/x.enum') {
+        // For enum responses, ensure the response is one of the allowed values
+        if (structuredConfig.responseSchema?.enum) {
+          const allowedValues = structuredConfig.responseSchema.enum;
+          if (!allowedValues.includes(response.content)) {
+            console.warn(`Enum response '${response.content}' not in allowed values: ${allowedValues.join(', ')}`);
+          }
+        }
+      }
+
+    return response;
+  }
+
+  /**
+   * Call Gemini API with JSON schema output (preview feature)
+   * @param {string} model - Model type ('flash' or 'pro')
+   * @param {string} prompt - Prompt to send
+   * @param {Object} jsonSchema - JSON schema definition
+   * @param {Object} options - Additional options
+   * @returns {Promise<Object>} JSON schema response
+   */
+  async callGeminiWithJSONSchema(model, prompt, jsonSchema, options = {}) {
+    if (!this.hasValidApiKey()) {
+      console.warn(' No valid Gemini API key found.');
+      throw new Error('NO_VALID_API_KEY');
+    }
+
+    // Use gemini-2.5 models for JSON schema support
+    const modelConfig = this.modelConfigs[model] || this.modelConfigs.flash;
+
+    const enhancedOptions = {
+      ...options,
+      responseJsonSchema: jsonSchema
+    };
+
+    const requestPayload = this._buildRequestPayload(prompt, enhancedOptions);
+
+    console.log(`Making JSON schema call to ${modelConfig.name}...`);
+
+    return await this._executeWithRetry(modelConfig, requestPayload, true);
+  }
+
+  /**
    * Execute API call with retry logic
    * @param {Object} modelConfig - Model configuration
    * @param {Object} requestPayload - Request payload
+   * @param {boolean} isStructuredOutput - Whether this is a structured output request
    * @returns {Promise<Object>} API response
    */
-  async _executeWithRetry(modelConfig, requestPayload) {
+  async _executeWithRetry(modelConfig, requestPayload, isStructuredOutput = false) {
     const maxRetries = 2;
     let attempt = 1;
-    
+
     while (attempt <= maxRetries) {
       try {
         console.log(` Attempt ${attempt}/${maxRetries} - Calling ${modelConfig.name}...`);
-        
+
         const response = await axios.post(modelConfig.endpoint, requestPayload, {
           headers: {
             'Content-Type': 'application/json',
@@ -101,8 +178,8 @@ class GeminiApiClient {
           },
           timeout: 60000 // 60 second timeout
         });
-        
-        return this._processResponse(response, modelConfig.name, requestPayload.contents[0].parts[0].text);
+
+        return this._processResponse(response, modelConfig.name, requestPayload.contents[0].parts[0].text, isStructuredOutput);
         
       } catch (error) {
         console.log(` Attempt ${attempt} failed: ${error.message}`);
@@ -141,12 +218,44 @@ class GeminiApiClient {
       safetySettings: options.safetySettings || this.safetySettings
     };
 
-    // Add structured output configuration if schema provided
+    // Add structured output configuration
     if (options.responseSchema) {
+      // Handle both direct schema and structured output configuration
+      if (options.responseSchema.responseMimeType && options.responseSchema.responseSchema) {
+        // Pre-configured structured output (from StructuredOutputService)
+        payload.generationConfig = {
+          ...payload.generationConfig,
+          responseMimeType: options.responseSchema.responseMimeType,
+          responseSchema: options.responseSchema.responseSchema
+        };
+      } else {
+        // Direct schema definition
+        payload.generationConfig = {
+          ...payload.generationConfig,
+          responseMimeType: options.responseMimeType || "application/json",
+          responseSchema: options.responseSchema
+        };
+      }
+    }
+
+    // Support for JSON Schema (preview feature)
+    if (options.responseJsonSchema) {
       payload.generationConfig = {
         ...payload.generationConfig,
         responseMimeType: "application/json",
-        responseSchema: options.responseSchema
+        responseJsonSchema: options.responseJsonSchema
+      };
+    }
+
+    // Support for enum responses
+    if (options.enumValues) {
+      payload.generationConfig = {
+        ...payload.generationConfig,
+        responseMimeType: "text/x.enum",
+        responseSchema: {
+          type: "STRING",
+          enum: options.enumValues
+        }
       };
     }
 
@@ -158,9 +267,10 @@ class GeminiApiClient {
    * @param {Object} response - Axios response
    * @param {string} modelName - Model name
    * @param {string} originalPrompt - Original prompt for token calculation
+   * @param {boolean} isStructuredOutput - Whether this is a structured output request
    * @returns {Object} Processed response
    */
-  _processResponse(response, modelName, originalPrompt) {
+  _processResponse(response, modelName, originalPrompt, isStructuredOutput = false) {
     const responseData = response.data;
 
     if (!responseData.candidates || !responseData.candidates[0]) {
@@ -178,12 +288,44 @@ class GeminiApiClient {
 
     console.log(` Gemini API response received (${tokensUsed} tokens estimated)`);
 
+    // For structured output, return parsed JSON directly
+    if (isStructuredOutput) {
+      try {
+        // Gemini structured output should already be valid JSON
+        const parsedData = JSON.parse(content);
+        console.log(`✅ Structured output parsed successfully`);
+
+        return {
+          content: parsedData, // Return parsed JSON directly
+          tokensUsed: tokensUsed,
+          model: modelName,
+          finishReason: candidate.finishReason || 'STOP',
+          raw: responseData,
+          isStructured: true
+        };
+      } catch (parseError) {
+        console.warn(`⚠️ Failed to parse structured output JSON: ${parseError.message}`);
+        // Fallback to raw content if JSON parsing fails
+        return {
+          content: content,
+          tokensUsed: tokensUsed,
+          model: modelName,
+          finishReason: candidate.finishReason || 'STOP',
+          raw: responseData,
+          isStructured: false,
+          parseError: parseError.message
+        };
+      }
+    }
+
+    // For unstructured output, return raw content
     return {
       content: content,
       tokensUsed: tokensUsed,
       model: modelName,
       finishReason: candidate.finishReason || 'STOP',
-      raw: responseData // Keep raw response for debugging
+      raw: responseData,
+      isStructured: false
     };
   }
 
