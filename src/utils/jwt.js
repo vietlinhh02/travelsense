@@ -8,7 +8,7 @@ const generateTokens = (user) => {
     const accessToken = jwt.sign(
         { userId: user._id, email: user.email },
         config.jwt.accessTokenSecret,
-        { expiresIn: '15m' }
+        { expiresIn: '1d' }
     );
 
     const tokenId = crypto.randomBytes(16).toString('hex');
