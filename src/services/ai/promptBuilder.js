@@ -6,77 +6,63 @@ class PromptBuilder {
   constructor() {
     // Base templates for different prompt types
     this.templates = {
-      extraction: {
-        header: "Extract structured trip information from the conversation. Return ONLY JSON in a code block.",
-        instructions: `Analyze the user's message and extract trip planning information.
 
-Return JSON ONLY with this exact schema:
-\`\`\`json
-{
-  "language": "vi|en",
-  "timezone": "Asia/Bangkok|Asia/Tokyo|etc",
-  "currency": "VND|USD|JPY|etc",
-  "intent": "create_trip|modify_trip|ask_info|other",
-  "extracted": {
-    "origin": "string|null",
-    "destinations": ["string"],
-    "dates": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} | ["YYYY-MM-DD"] | null,
-    "duration": number|null,
-    "travelers": {"adults": number, "children": number, "infants": number},
-    "budget": {"total": number, "currency": "string"}|null,
-    "interests": ["string"],
-    "pace": "easy|balanced|intense|null",
-    "nightlife": "none|some|heavy|null",
-    "dayStart": "HH:mm|null",
-    "dayEnd": "HH:mm|null",
-    "quietMorningAfterLateNight": boolean|null,
-    "transportPrefs": ["string"]|null,
-    "walkingLimitKm": number|null,
-    "dietary": ["string"]|null,
-    "mobility": "none|stroller|wheelchair|null",
-    "mustSee": ["string"]|null,
-    "avoid": ["string"]|null,
-    "notes": "string|null"
-  },
-  "missing": ["field1", "field2"],
-  "ambiguities": ["description1", "description2"]
-}
-\`\`\`
-
-Rules:
-- If a field is unknown, set to null and add field name to "missing"
-- If something is ambiguous, add description to "ambiguities"
-- Normalize dates to YYYY-MM-DD format using timezone
-- Default language: vi for Vietnamese, en for English
-- Default currency based on destination`
-      },
       itinerary: {
         header: "You are a professional travel planner. Create a detailed, day-by-day itinerary for the following trip:",
-        format: `Please return the itinerary as a single JSON object. Do not include any text outside of the JSON object.
-The JSON object should be an array of day objects, where each day object has a 'date' and a list of 'activities'.
-Each activity object must have the following properties: 'time', 'title', 'venue', 'address', 'category', and 'notes'.
+        format: `You must respond with ONLY a JSON array. No other text or explanation.
 
-Example JSON structure:
-\`\`\`json
-[{
-  "date": "YYYY-MM-DD",
-  "activities": [{
-    "time": "HH:MM",
-    "title": "Activity Title",
-    "venue": "Venue Name",
-    "address": "Venue Address",
-    "category": "Activity Category",
-    "notes": "Additional notes"
-  }]
-}]
-\`\`\`
+The response must be a valid JSON array in this exact format:
+[
+  {
+    "date": "2024-12-25",
+    "activities": [
+      {
+        "time": "09:00",
+        "title": "Visit Ben Thanh Market",
+        "description": "Explore the famous local market",
+        "location": {
+          "name": "Ben Thanh Market",
+          "address": "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City",
+          "coordinates": {
+            "lat": 10.7720,
+            "lng": 106.6988
+          }
+        },
+        "duration": 120,
+        "cost": 50000,
+        "category": "shopping",
+        "notes": "Famous local market for shopping and street food"
+      },
+      {
+        "time": "14:00",
+        "title": "Explore Independence Palace",
+        "description": "Visit the historic presidential palace",
+        "location": {
+          "name": "Independence Palace",
+          "address": "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City",
+          "coordinates": {
+            "lat": 10.7769,
+            "lng": 106.6955
+          }
+        },
+        "duration": 90,
+        "cost": 120000,
+        "category": "cultural",
+        "notes": "Historic palace with beautiful architecture"
+      }
+    ]
+  }
+]
 
-CRITICAL REQUIREMENTS for each activity:
-- Use EXACT venue names (e.g., "Ben Thanh Market", "Independence Palace", "War Remnants Museum").
-- Include SPECIFIC addresses (e.g., "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City").
-- Every location MUST be a real, searchable place name.
-- The 'category' should be one of: 'cultural', 'food', 'shopping', 'nature', 'technology', 'leisure', 'entertainment', 'nightlife'.
-- Provide brief but informative 'notes'.`
+IMPORTANT:
+- Start your response with [
+- End your response with ]
+- No text before or after the JSON
+- Use real venue names and addresses from your knowledge
+- Always include accurate coordinates for each location
+- Categories: cultural, adventure, relaxation, food, shopping, nature, nightlife, transportation, accommodation
+- Include realistic duration (in minutes) and cost estimates
+- Provide detailed, helpful descriptions for each activity`
       },
       optimization: {
         header: "Optimize the following trip schedule for better flow and efficiency:",
@@ -124,27 +110,7 @@ CRITICAL REQUIREMENTS for each activity:
     return prompt;
   }
 
-  /**
-   * Build trip information extraction prompt
-   * @param {string} message - User message
-   * @param {Object} context - Context with user defaults
-   * @returns {string} Formatted extraction prompt
-   */
-  buildExtractionPrompt(message, context = {}) {
-    let prompt = `${this.templates.extraction.header}\n\n`;
-    prompt += `User message: ${message}\n\n`;
 
-    if (context.userDefaults) {
-      prompt += `User defaults:\n`;
-      prompt += `- Language: ${context.userDefaults.language || 'vi'}\n`;
-      prompt += `- Timezone: ${context.userDefaults.timezone || 'Asia/Bangkok'}\n`;
-      prompt += `- Currency: ${context.userDefaults.currency || 'VND'}\n\n`;
-    }
-
-    prompt += this.templates.extraction.instructions;
-
-    return prompt;
-  }
 
   /**
    * Build itinerary generation prompt with enhanced preferences support
@@ -159,6 +125,14 @@ CRITICAL REQUIREMENTS for each activity:
 
     if (options.focus) {
       prompt += `- Special Focus: ${options.focus}\n`;
+    }
+
+    if (options.retry) {
+      prompt += `- This is a RETRY attempt - please ensure perfect JSON format\n`;
+    }
+
+    if (options.formatEmphasis) {
+      prompt += `- ${options.formatEmphasis}\n`;
     }
 
     // Add nightlife and time preferences rules
