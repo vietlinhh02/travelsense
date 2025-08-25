@@ -293,7 +293,7 @@ class GeminiApiClient {
       try {
         // Gemini structured output should already be valid JSON
         const parsedData = JSON.parse(content);
-        console.log(`✅ Structured output parsed successfully`);
+        console.log(`Structured output parsed successfully`);
 
         return {
           content: parsedData, // Return parsed JSON directly
@@ -304,7 +304,7 @@ class GeminiApiClient {
           isStructured: true
         };
       } catch (parseError) {
-        console.warn(`⚠️ Failed to parse structured output JSON: ${parseError.message}`);
+        console.warn(` Failed to parse structured output JSON: ${parseError.message}`);
         // Fallback to raw content if JSON parsing fails
         return {
           content: content,

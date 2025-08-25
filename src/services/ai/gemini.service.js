@@ -420,7 +420,7 @@ class GeminiService {
 
       // Check if trip already has a complete itinerary
       if (trip.itinerary && trip.itinerary.days && trip.itinerary.days.length > 0) {
-        console.log('ℹ️ Trip already has itinerary, returning existing data...');
+        console.log('ℹ Trip already has itinerary, returning existing data...');
         return {
           itinerary: trip.itinerary.days,
           tokensUsed: 0,
@@ -431,7 +431,7 @@ class GeminiService {
         };
       }
 
-      console.log('🎯 Generating itinerary with AI...');
+      console.log(' Generating itinerary with AI...');
 
       // Use simplified structured output approach
       const result = await this.generateStructuredItinerary(userId, tripId, options);
@@ -454,7 +454,7 @@ class GeminiService {
                   trip.status = 'completed'; // Mark as completed when successfully generated
                   await trip.save();
 
-                  console.log('✅ Itinerary saved to database successfully!');
+                  console.log('Itinerary saved to database successfully!');
                 }
 
       // Return structured JSON directly
@@ -724,7 +724,7 @@ class GeminiService {
         throw new Error('TRIP_ACCESS_DENIED');
       }
 
-      console.log('🎯 Generating structured itinerary...');
+      console.log(' Generating structured itinerary...');
 
       // Calculate actual dates for the trip FIRST (Fix hoisting error)
       const startDate = new Date(trip.destination.startDate);
@@ -735,7 +735,7 @@ class GeminiService {
         actualDates.push(date.toISOString().split('T')[0]); // YYYY-MM-DD format
       }
 
-      console.log('📅 Trip dates calculated:', actualDates);
+      console.log(' Trip dates calculated:', actualDates);
 
       // Create simple itinerary schema with actual dates validation
       const itinerarySchema = this.createItinerarySchema(trip.duration || 3, actualDates);
@@ -797,7 +797,7 @@ class GeminiService {
         JSON.parse(response.content);
 
       // Transform Gemini response to match Mongoose schema
-      console.log('🔄 Transforming Gemini response to Mongoose format...');
+      console.log('Transforming Gemini response to Mongoose format...');
       structuredData = this._transformGeminiToMongoose(structuredData);
 
       // Extract tips from response if available
@@ -812,11 +812,11 @@ class GeminiService {
       // Validate dates and structure
       const validation = this.responseParser.validateItinerary(structuredData, trip);
       if (!validation.ok) {
-        console.warn('⚠️ Itinerary validation warnings:', validation.issues);
+        console.warn('Itinerary validation warnings:', validation.issues);
         // Continue anyway but log warnings
       }
 
-      console.log('✅ Structured itinerary generated successfully!');
+      console.log(' Structured itinerary generated successfully!');
 
       return {
         itinerary: structuredData,
@@ -840,7 +840,7 @@ class GeminiService {
    */
   async generateStructuredActivitySuggestions(userId, suggestionData) {
     try {
-      console.log('🎯 Generating structured activity suggestions...');
+      console.log('Generating structured activity suggestions...');
 
       // Create activity suggestion schema
       const suggestionSchema = this.createArraySchema(
@@ -866,7 +866,7 @@ class GeminiService {
           suggestionSchema.responseSchema
         );
 
-      console.log('✅ Structured activity suggestions generated successfully!');
+      console.log('Structured activity suggestions generated successfully!');
 
       return {
         suggestions: structuredData,
@@ -888,7 +888,7 @@ class GeminiService {
    */
   async classifyWithEnum(content, categories) {
     try {
-      console.log('🎯 Classifying content with enum...');
+      console.log('Classifying content with enum...');
 
       // Create enum schema
       const enumSchema = this.createEnumSchema(categories);
@@ -911,7 +911,7 @@ class GeminiService {
           enumSchema.responseSchema
         );
 
-      console.log(`✅ Content classified as: ${classification}`);
+      console.log(`Content classified as: ${classification}`);
 
       return {
         classification,
@@ -933,7 +933,7 @@ class GeminiService {
    */
   async generateRecipeList(cuisine = 'Italian', maxRecipes = 5) {
     try {
-      console.log(`🎯 Generating ${cuisine} recipes with structured output...`);
+      console.log(`Generating ${cuisine} recipes with structured output...`);
 
       // Create recipe schema
       const recipeSchema = this.createRecipeListSchema(maxRecipes);
@@ -956,7 +956,7 @@ class GeminiService {
           recipeSchema.responseSchema
         );
 
-      console.log(`✅ Generated ${recipes.length} ${cuisine} recipes!`);
+      console.log(`Generated ${recipes.length} ${cuisine} recipes!`);
 
       return {
         recipes,
@@ -978,7 +978,7 @@ class GeminiService {
    */
   async generateUserProfile(description) {
     try {
-      console.log('🎯 Generating user profile with structured output...');
+      console.log('Generating user profile with structured output...');
 
       // Create user profile schema
       const profileSchema = this.getTemplate('userProfile');
@@ -1001,7 +1001,7 @@ class GeminiService {
           profileSchema.responseSchema
         );
 
-      console.log('✅ User profile generated successfully!');
+      console.log('User profile generated successfully!');
 
       return {
         profile,
@@ -1095,7 +1095,7 @@ class GeminiService {
    * @returns {Array} Transformed data matching Mongoose schema
    */
   _transformGeminiToMongoose(geminiData) {
-    console.log('🔄 Transforming Gemini format to Mongoose format...');
+    console.log('Transforming Gemini format to Mongoose format...');
 
     // Handle both old format (direct array) and new format (with days property)
     const days = geminiData.days || geminiData;
