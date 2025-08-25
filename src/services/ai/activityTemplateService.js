@@ -88,7 +88,15 @@ class ActivityTemplateService {
     // Filter templates based on interests and budget
     let selectedTemplates = [];
     interests.forEach(interest => {
-      if (templates[interest]) {
+      // Handle nightlife interests
+      if (interest === 'nightlife' && templates.nightlife) {
+        selectedTemplates = selectedTemplates.concat(
+          templates.nightlife.filter(activity => {
+            const costInUSD = this._convertCostToUSD(activity.cost, destination);
+            return costInUSD <= dailyBudget * 2; // Allow higher budget for nightlife
+          })
+        );
+      } else if (templates[interest]) {
         selectedTemplates = selectedTemplates.concat(
           templates[interest].filter(activity => {
             // Convert cost to USD if needed
@@ -169,6 +177,12 @@ class ActivityTemplateService {
       sightseeing: [
         { title: 'Tokyo Skytree Observatory', location: 'Tokyo Skytree', address: '1-1-2 Oshiage, Sumida City, Tokyo 131-0045', description: 'World\'s tallest tower with panoramic city views', category: 'sightseeing', duration: 90, cost: 2060, coordinates: { lat: 35.7101, lng: 139.8107 } },
         { title: 'Shibuya Crossing Experience', location: 'Shibuya Crossing', address: 'Shibuya, Tokyo', description: 'World\'s busiest pedestrian crossing experience', category: 'sightseeing', duration: 60, cost: 0, coordinates: { lat: 35.6598, lng: 139.7006 } }
+      ],
+      nightlife: [
+        { title: 'Rooftop Bar at Park Hyatt Tokyo', location: 'Park Hyatt Tokyo', address: '3-7-1-2 Nishi Shinjuku, Shinjuku City, Tokyo 163-1055', description: 'Luxury rooftop bar with stunning city views and craft cocktails', category: 'nightlife', duration: 120, cost: 8000, coordinates: { lat: 35.6849, lng: 139.6917 } },
+        { title: 'Golden Gai Bar Hopping', location: 'Golden Gai', address: 'Kabukicho, Shinjuku City, Tokyo', description: 'Experience Tokyo\'s famous tiny bars and underground music scene', category: 'nightlife', duration: 180, cost: 5000, coordinates: { lat: 35.6940, lng: 139.7014 } },
+        { title: 'Jazz at Blue Note Tokyo', location: 'Blue Note Tokyo', address: '6 Chome-3-16 Minamiaoyama, Minato City, Tokyo', description: 'World-class jazz performances in an intimate setting', category: 'entertainment', duration: 150, cost: 6000, coordinates: { lat: 35.6623, lng: 139.7126 } },
+        { title: 'Shibuya Nightlife District', location: 'Shibuya', address: 'Shibuya, Tokyo', description: 'Vibrant nightlife with arcades, karaoke, and street food', category: 'nightlife', duration: 240, cost: 3000, coordinates: { lat: 35.6598, lng: 139.7006 } }
       ]
     };
   }
@@ -209,6 +223,12 @@ class ActivityTemplateService {
       sightseeing: [
         { title: 'Cu Chi Tunnels Half-Day Tour', location: 'Cu Chi Tunnels', address: 'Cu Chi District, Ho Chi Minh City', description: 'Historic underground tunnel network used during Vietnam War', category: 'cultural', duration: 240, cost: 960000, coordinates: { lat: 11.1617, lng: 106.4500 } },
         { title: 'Mekong Delta Day Trip', location: 'Mekong Delta', address: 'My Tho, Tien Giang Province', description: 'Traditional floating markets and river life experience', category: 'nature', duration: 480, cost: 1200000, coordinates: { lat: 10.3600, lng: 106.3600 } }
+      ],
+      nightlife: [
+        { title: 'Bui Vien Walking Street Nightlife', location: 'Bui Vien Walking Street', address: 'Pham Ngu Lao, District 1, Ho Chi Minh City', description: 'Vibrant backpacker street with bars, street food, and live music', category: 'nightlife', duration: 180, cost: 240000, coordinates: { lat: 10.7669, lng: 106.6931 } },
+        { title: 'Rooftop Bar at The Reverie Saigon', location: 'The Reverie Saigon', address: '22-36 Nguyen Hue, Ben Nghe Ward, District 1', description: 'Luxury rooftop bar with Saigon River views and craft cocktails', category: 'nightlife', duration: 120, cost: 360000, coordinates: { lat: 10.7745, lng: 106.7013 } },
+        { title: 'Live Music at Acoustic Bar', location: 'Acoustic Saigon', address: '6E1 Ngo Thoi Nhiem, District 3, Ho Chi Minh City', description: 'Intimate venue featuring local and international musicians', category: 'entertainment', duration: 150, cost: 180000, coordinates: { lat: 10.7829, lng: 106.6852 } },
+        { title: 'District 1 Club Scene', location: 'District 1 Nightclubs', address: 'Various locations in District 1', description: 'Experience Saigon\'s growing club scene with DJs and dancing', category: 'nightlife', duration: 240, cost: 300000, coordinates: { lat: 10.7769, lng: 106.7009 } }
       ]
     };
   }
@@ -231,25 +251,42 @@ class ActivityTemplateService {
       { time: '11:30', period: 'late-morning' },
       { time: '14:00', period: 'afternoon' },
       { time: '16:30', period: 'late-afternoon' },
-      { time: '18:30', period: 'evening' }
+      { time: '18:30', period: 'evening' },
+      { time: '20:30', period: 'nightlife' } // Add nightlife slot
     ];
     
     // First day: lighter schedule, focus on arrival and orientation
     // Last day: consider departure, lighter activities
     const activitiesPerDay = dayNumber === 1 || dayNumber === totalDays ? 3 : 4;
     
-    // Randomly select templates ensuring variety
-    const shuffledTemplates = [...templates].sort(() => Math.random() - 0.5);
-    
+    // Separate nightlife and regular activities
+    const nightlifeTemplates = templates.filter(t => t.category === 'nightlife' || t.category === 'entertainment');
+    const regularTemplates = templates.filter(t => t.category !== 'nightlife' && t.category !== 'entertainment');
+
+    // Shuffle templates ensuring variety
+    const shuffledRegular = [...regularTemplates].sort(() => Math.random() - 0.5);
+    const shuffledNightlife = [...nightlifeTemplates].sort(() => Math.random() - 0.5);
+
     for (let i = 0; i < Math.min(activitiesPerDay, timeSlots.length) && activities.length < activitiesPerDay; i++) {
-      // Find an unused template
       let selectedTemplate = null;
-      for (const template of shuffledTemplates) {
-        const templateKey = `${template.title}-${template.location}`;
-        if (!usedTemplates.has(templateKey)) {
-          selectedTemplate = template;
-          usedTemplates.add(templateKey);
-          break;
+
+      // For the last slot, prefer nightlife if available
+      if (i === activitiesPerDay - 1 && shuffledNightlife.length > 0) {
+        selectedTemplate = shuffledNightlife.find(template => {
+          const templateKey = `${template.title}-${template.location}`;
+          return !usedTemplates.has(templateKey);
+        });
+      }
+
+      // If no nightlife for last slot or not last slot, use regular templates
+      if (!selectedTemplate) {
+        for (const template of shuffledRegular) {
+          const templateKey = `${template.title}-${template.location}`;
+          if (!usedTemplates.has(templateKey)) {
+            selectedTemplate = template;
+            usedTemplates.add(templateKey);
+            break;
+          }
         }
       }
       
@@ -315,33 +352,7 @@ class ActivityTemplateService {
     return { lat: 0, lng: 0 };
   }
 
-  /**
-   * Get destination-specific currency information
-   * @param {string} destination - Destination name
-   * @returns {Object} Currency information
-   */
-  getDestinationCurrency(destination) {
-    const destLower = destination.toLowerCase();
-    
-    if (destLower.includes('japan') || destLower.includes('tokyo')) {
-      return this.currencyRates.japan;
-    } else if (destLower.includes('vietnam') || destLower.includes('saigon')) {
-      return this.currencyRates.vietnam;
-    } else {
-      return this.currencyRates.default;
-    }
-  }
 
-  /**
-   * Add new activity template for a destination
-   * @param {string} destination - Destination name
-   * @param {string} category - Activity category
-   * @param {Object} template - Activity template
-   */
-  addActivityTemplate(destination, category, template) {
-    // In a real implementation, this would save to a database
-    console.log(`Adding new template for ${destination}, category: ${category}`);
-  }
 }
 
 module.exports = ActivityTemplateService;

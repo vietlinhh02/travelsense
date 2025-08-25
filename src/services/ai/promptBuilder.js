@@ -6,6 +6,50 @@ class PromptBuilder {
   constructor() {
     // Base templates for different prompt types
     this.templates = {
+      extraction: {
+        header: "Extract structured trip information from the conversation. Return ONLY JSON in a code block.",
+        instructions: `Analyze the user's message and extract trip planning information.
+
+Return JSON ONLY with this exact schema:
+\`\`\`json
+{
+  "language": "vi|en",
+  "timezone": "Asia/Bangkok|Asia/Tokyo|etc",
+  "currency": "VND|USD|JPY|etc",
+  "intent": "create_trip|modify_trip|ask_info|other",
+  "extracted": {
+    "origin": "string|null",
+    "destinations": ["string"],
+    "dates": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} | ["YYYY-MM-DD"] | null,
+    "duration": number|null,
+    "travelers": {"adults": number, "children": number, "infants": number},
+    "budget": {"total": number, "currency": "string"}|null,
+    "interests": ["string"],
+    "pace": "easy|balanced|intense|null",
+    "nightlife": "none|some|heavy|null",
+    "dayStart": "HH:mm|null",
+    "dayEnd": "HH:mm|null",
+    "quietMorningAfterLateNight": boolean|null,
+    "transportPrefs": ["string"]|null,
+    "walkingLimitKm": number|null,
+    "dietary": ["string"]|null,
+    "mobility": "none|stroller|wheelchair|null",
+    "mustSee": ["string"]|null,
+    "avoid": ["string"]|null,
+    "notes": "string|null"
+  },
+  "missing": ["field1", "field2"],
+  "ambiguities": ["description1", "description2"]
+}
+\`\`\`
+
+Rules:
+- If a field is unknown, set to null and add field name to "missing"
+- If something is ambiguous, add description to "ambiguities"
+- Normalize dates to YYYY-MM-DD format using timezone
+- Default language: vi for Vietnamese, en for English
+- Default currency based on destination`
+      },
       itinerary: {
         header: "You are a professional travel planner. Create a detailed, day-by-day itinerary for the following trip:",
         format: `Please return the itinerary as a single JSON object. Do not include any text outside of the JSON object.
@@ -31,7 +75,7 @@ CRITICAL REQUIREMENTS for each activity:
 - Use EXACT venue names (e.g., "Ben Thanh Market", "Independence Palace", "War Remnants Museum").
 - Include SPECIFIC addresses (e.g., "135 Nam Ky Khoi Nghia, District 1, Ho Chi Minh City").
 - Every location MUST be a real, searchable place name.
-- The 'category' should be one of: 'cultural', 'food', 'shopping', 'nature', 'technology', 'leisure'.
+- The 'category' should be one of: 'cultural', 'food', 'shopping', 'nature', 'technology', 'leisure', 'entertainment', 'nightlife'.
 - Provide brief but informative 'notes'.`
       },
       optimization: {
@@ -62,11 +106,11 @@ CRITICAL REQUIREMENTS for each activity:
   buildConversationPrompt(message, context = {}) {
     let prompt = `${this.templates.chat.header}\n\n`;
     prompt += `User message: ${message}\n\n`;
-    
+
     if (context.tripId) {
       prompt += `Context: This is related to trip planning.\n`;
     }
-    
+
     if (context.conversationHistory && context.conversationHistory.length > 0) {
       prompt += `Previous conversation:\n`;
       context.conversationHistory.slice(-3).forEach(exchange => {
@@ -74,32 +118,66 @@ CRITICAL REQUIREMENTS for each activity:
       });
       prompt += `\n`;
     }
-    
+
     prompt += this.templates.chat.instructions;
-    
+
     return prompt;
   }
 
   /**
-   * Build itinerary generation prompt
-   * @param {Object} trip - Trip object
-   * @param {string} focus - Special focus for the itinerary
-   * @returns {string} Formatted prompt
+   * Build trip information extraction prompt
+   * @param {string} message - User message
+   * @param {Object} context - Context with user defaults
+   * @returns {string} Formatted extraction prompt
    */
-  buildItineraryPrompt(trip, focus) {
-    let prompt = `${this.templates.itinerary.header}\n\n`;
-    
-    prompt += this._buildTripDetails(trip);
-    
-    if (focus) {
-      prompt += `- Special Focus: ${focus}\n`;
+  buildExtractionPrompt(message, context = {}) {
+    let prompt = `${this.templates.extraction.header}\n\n`;
+    prompt += `User message: ${message}\n\n`;
+
+    if (context.userDefaults) {
+      prompt += `User defaults:\n`;
+      prompt += `- Language: ${context.userDefaults.language || 'vi'}\n`;
+      prompt += `- Timezone: ${context.userDefaults.timezone || 'Asia/Bangkok'}\n`;
+      prompt += `- Currency: ${context.userDefaults.currency || 'VND'}\n\n`;
     }
-    
-    prompt += `\n**Instructions:**\n`;
-    prompt += this.templates.itinerary.format;
-    
+
+    prompt += this.templates.extraction.instructions;
+
     return prompt;
   }
+
+  /**
+   * Build itinerary generation prompt with enhanced preferences support
+   * @param {Object} trip - Trip object
+   * @param {Object} options - Generation options with new preferences
+   * @returns {string} Formatted prompt
+   */
+  buildItineraryPrompt(trip, options = {}) {
+    let prompt = `${this.templates.itinerary.header}\n\n`;
+
+    prompt += this._buildTripDetailsV2(trip, options);
+
+    if (options.focus) {
+      prompt += `- Special Focus: ${options.focus}\n`;
+    }
+
+    // Add nightlife and time preferences rules
+    if (options.nightlife || options.pace || options.dayStart || options.dayEnd) {
+      prompt += `\n**Time Management & Preferences:**\n`;
+      if (options.dayStart) prompt += `- Day starts at: ${options.dayStart}\n`;
+      if (options.dayEnd) prompt += `- Day ends at: ${options.dayEnd}\n`;
+      if (options.pace) prompt += `- Pace: ${options.pace} (easy=relaxed, balanced=moderate, intense=packed)\n`;
+      if (options.nightlife) prompt += `- Nightlife preference: ${options.nightlife} (none/some/heavy)\n`;
+      if (options.quietMorningAfterLateNight) prompt += `- Quiet morning after late night: enabled\n`;
+    }
+
+    prompt += `\n**Instructions:**\n`;
+    prompt += this.templates.itinerary.format;
+
+    return prompt;
+  }
+
+
 
   /**
    * Build chunked itinerary generation prompt for long trips
@@ -218,40 +296,79 @@ CRITICAL REQUIREMENTS for each activity:
   }
 
   /**
-   * Build trip details section (helper method)
+   * Build trip details section (legacy method)
    * @param {Object} trip - Trip object
    * @returns {string} Formatted trip details
    */
   _buildTripDetails(trip) {
+    return this._buildTripDetailsV2(trip, {});
+  }
+
+  /**
+   * Build enhanced trip details section with new preferences support
+   * @param {Object} trip - Trip object
+   * @param {Object} options - Generation options with new preferences
+   * @returns {string} Formatted trip details
+   */
+  _buildTripDetailsV2(trip, options = {}) {
     let details = `**Trip Details:**\n`;
     details += `- Destination: From ${trip.destination.origin} to ${trip.destination.destination}\n`;
     details += `- Duration: ${trip.duration} days\n`;
     details += `- Travelers: ${trip.travelers.adults} adults`;
-    
+
     if (trip.travelers.children > 0) {
       details += `, ${trip.travelers.children} children`;
     }
     if (trip.travelers.infants > 0) {
       details += `, ${trip.travelers.infants} infants`;
     }
-    
     details += `\n`;
-    
+
+    // Enhanced preferences
     if (trip.budget && trip.budget.total) {
       details += `- Budget: $${trip.budget.total} USD total\n`;
     }
-    
+
     if (trip.preferences && trip.preferences.interests && trip.preferences.interests.length > 0) {
       details += `- Interests: ${trip.preferences.interests.join(', ')}\n`;
     }
-    
+
     if (trip.preferences && trip.preferences.constraints && trip.preferences.constraints.length > 0) {
       details += `- Constraints: ${trip.preferences.constraints.join(', ')}\n`;
     }
-    
+
+    // New preferences from options
+    if (options.pace) {
+      details += `- Pace: ${options.pace}\n`;
+    }
+    if (options.nightlife) {
+      details += `- Nightlife: ${options.nightlife}\n`;
+    }
+    if (options.dayStart || options.dayEnd) {
+      details += `- Active hours: ${options.dayStart || '09:00'} - ${options.dayEnd || '22:00'}\n`;
+    }
+    if (options.quietMorningAfterLateNight) {
+      details += `- Quiet morning after late night: enabled\n`;
+    }
+    if (options.transportPrefs && options.transportPrefs.length > 0) {
+      details += `- Transport preferences: ${options.transportPrefs.join(', ')}\n`;
+    }
+    if (options.walkingLimitKm) {
+      details += `- Walking limit: ${options.walkingLimitKm}km\n`;
+    }
+    if (options.dietary && options.dietary.length > 0) {
+      details += `- Dietary requirements: ${options.dietary.join(', ')}\n`;
+    }
+    if (options.mustSee && options.mustSee.length > 0) {
+      details += `- Must see: ${options.mustSee.join(', ')}\n`;
+    }
+    if (options.avoid && options.avoid.length > 0) {
+      details += `- Avoid: ${options.avoid.join(', ')}\n`;
+    }
+
     // Add destination-specific examples to guide AI
     details += this._getDestinationSpecificExamples(trip.destination.destination);
-    
+
     return details;
   }
 
@@ -376,41 +493,7 @@ CRITICAL REQUIREMENTS for each activity:
 - Ensure timing is realistic and achievable`;
   }
 
-  /**
-   * Validate prompt length and content
-   * @param {string} prompt - Generated prompt
-   * @returns {Object} Validation result
-   */
-  validatePrompt(prompt) {
-    const maxLength = 8000; // Safe limit for most models
-    const minLength = 50;
-    
-    return {
-      valid: prompt.length >= minLength && prompt.length <= maxLength,
-      length: prompt.length,
-      maxLength,
-      minLength,
-      warnings: prompt.length > maxLength * 0.8 ? ['Prompt is getting close to maximum length'] : []
-    };
-  }
 
-  /**
-   * Get template for specific prompt type
-   * @param {string} type - Template type
-   * @returns {Object} Template object
-   */
-  getTemplate(type) {
-    return this.templates[type] || null;
-  }
-
-  /**
-   * Update template for specific prompt type
-   * @param {string} type - Template type
-   * @param {Object} template - New template
-   */
-  updateTemplate(type, template) {
-    this.templates[type] = { ...(this.templates[type] || {}), ...template };
-  }
 
   /**
    * Get destination-specific examples for venue names

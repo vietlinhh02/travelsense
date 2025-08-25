@@ -23,11 +23,13 @@ class LongTripHandler {
   /**
    * Determine if trip needs chunking and create segmentation strategy
    * @param {Object} trip - Trip object
+   * @param {Object} options - Additional options including preferences
    * @returns {Object} Segmentation strategy
    */
-  analyzeTrip(trip) {
+  analyzeTrip(trip, options = {}) {
     const duration = trip.duration;
-    
+    const preferences = options.preferences || trip.preferences || {};
+
     if (duration < this.config.minDaysForChunking) {
       return {
         needsChunking: false,
@@ -39,19 +41,20 @@ class LongTripHandler {
     return {
       needsChunking: true,
       strategy: 'progressive_chunking',
-      chunks: this._createChunks(duration),
-      estimatedTokens: this._estimateTokenUsage(duration, this._createChunks(duration), trip)
+      chunks: this._createChunks(duration, preferences),
+      estimatedTokens: this._estimateTokenUsage(duration, this._createChunks(duration, preferences), trip)
     };
   }
 
   /**
-   * Create smart chunks for long trips
+   * Create smart chunks for long trips with preferences support
    * @param {number} duration - Trip duration in days
+   * @param {Object} preferences - User preferences for focus determination
    * @returns {Array} Array of chunk objects
    */
-  _createChunks(duration) {
+  _createChunks(duration, preferences = {}) {
     const chunks = [];
-    
+
     // Arrival chunk (first few days) - high detail
     chunks.push({
       id: 'arrival',
@@ -62,26 +65,34 @@ class LongTripHandler {
       detailLevel: 'comprehensive'
     });
 
+    // Adjust chunk size based on pace preference
+    let chunkSize = this.config.prioritySegments.middle;
+    if (preferences.pace === 'easy') {
+      chunkSize = Math.floor(chunkSize * 0.8); // Smaller chunks for relaxed pace
+    } else if (preferences.pace === 'intense') {
+      chunkSize = Math.ceil(chunkSize * 1.2); // Larger chunks for intense pace
+    }
+
     // Middle chunks - balanced detail
     let currentDay = this.config.prioritySegments.arrival + 1;
     let chunkIndex = 1;
-    
+
     while (currentDay <= duration - this.config.prioritySegments.departure) {
       const endDay = Math.min(
-        currentDay + this.config.prioritySegments.middle - 1,
+        currentDay + chunkSize - 1,
         duration - this.config.prioritySegments.departure
       );
-      
+
       if (currentDay <= endDay) {
         chunks.push({
           id: `middle_${chunkIndex}`,
           startDay: currentDay,
           endDay: endDay,
           priority: 'normal',
-          focus: this._determineChunkFocus(chunkIndex, duration),
+          focus: this._determineChunkFocus(chunkIndex, duration, preferences),
           detailLevel: 'balanced'
         });
-        
+
         currentDay = endDay + 1;
         chunkIndex++;
       } else {
@@ -105,22 +116,58 @@ class LongTripHandler {
   }
 
   /**
-   * Determine focus theme for middle chunks to maintain variety
+   * Determine focus theme for middle chunks to maintain variety with nightlife support
    * @param {number} chunkIndex - Chunk index
    * @param {number} totalDuration - Total trip duration
+   * @param {Object} preferences - User preferences including nightlife
    * @returns {string} Focus theme
    */
-  _determineChunkFocus(chunkIndex, totalDuration) {
-    const themes = [
+  _determineChunkFocus(chunkIndex, totalDuration, preferences = {}) {
+    const baseThemes = [
       'cultural_immersion',
       'local_experiences',
-      'nature_exploration', 
+      'nature_exploration',
       'food_discovery',
       'historical_sites',
       'entertainment_leisure'
     ];
-    
-    return themes[chunkIndex % themes.length];
+
+    // Add nightlife focus if user prefers nightlife and we're in weekend chunks
+    if (preferences.nightlife && preferences.nightlife !== 'none') {
+      const isWeekendChunk = this._isWeekendChunk(chunkIndex, totalDuration);
+      if (isWeekendChunk || preferences.nightlife === 'heavy') {
+        // Insert nightlife focus for weekend or heavy nightlife preference
+        baseThemes.splice(2, 0, 'nightlife_entertainment');
+      }
+    }
+
+    // Consider pace preference
+    if (preferences.pace === 'easy') {
+      // For easy pace, prefer more relaxed themes
+      const relaxedThemes = ['nature_exploration', 'cultural_immersion', 'local_experiences'];
+      return relaxedThemes[chunkIndex % relaxedThemes.length];
+    } else if (preferences.pace === 'intense') {
+      // For intense pace, prefer more varied and active themes
+      const activeThemes = ['cultural_immersion', 'food_discovery', 'entertainment_leisure'];
+      if (preferences.nightlife === 'heavy') {
+        activeThemes.push('nightlife_entertainment');
+      }
+      return activeThemes[chunkIndex % activeThemes.length];
+    }
+
+    return baseThemes[chunkIndex % baseThemes.length];
+  }
+
+  /**
+   * Check if chunk corresponds to weekend days
+   * @param {number} chunkIndex - Chunk index
+   * @param {number} totalDuration - Total trip duration
+   * @returns {boolean} True if weekend chunk
+   */
+  _isWeekendChunk(chunkIndex, totalDuration) {
+    // Simple heuristic: chunks 1 and 3 in a week-long trip are likely weekends
+    // This is a basic implementation - could be enhanced with actual dates
+    return chunkIndex === 1 || (chunkIndex === 3 && totalDuration >= 7);
   }
 
   /**
@@ -395,9 +442,10 @@ class LongTripHandler {
       'nature_exploration': 1.0,     // Medium complexity: location descriptions
       'local_experiences': 1.1,      // Medium-high: local context needed
       'entertainment_leisure': 0.9,  // Lower complexity: straightforward activities
+      'nightlife_entertainment': 1.0, // Medium complexity: venue details, timing, safety
       'departure_logistics': 0.8     // Lower complexity: simple logistics
     };
-    
+
     return complexityMap[focus] || 1.0;
   }
 
@@ -484,24 +532,6 @@ class LongTripHandler {
   getConfig() {
     return { ...this.config };
   }
-
-  /**
-   * Update configuration
-   * @param {Object} newConfig - New configuration values
-   */
-  updateConfig(newConfig) {
-    this.config = { ...this.config, ...newConfig };
-  }
-
-
-
-
-
-
-
-
-
-
 
 
 }
