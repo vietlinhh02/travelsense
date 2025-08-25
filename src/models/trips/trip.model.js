@@ -54,7 +54,7 @@ const activitySchema = new mongoose.Schema({
   cost: {
     type: Number,
     min: 0,
-    max: 100000
+    max: 50000000 // Increased for VND support (50M VND)
   },
   category: {
     type: String,
