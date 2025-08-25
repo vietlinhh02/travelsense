@@ -174,27 +174,27 @@ const updateTripValidation = [
   
   body('budget.breakdown.accommodation')
     .optional()
-    .isFloat({ min: 0, max: 1000000 }).withMessage('Accommodation budget must be between 0 and 1,000,000'),
-  
+    .isFloat({ min: 0, max: 50000000 }).withMessage('Accommodation budget must be between 0 and 50,000,000'),
+
   body('budget.breakdown.transportation')
     .optional()
-    .isFloat({ min: 0, max: 1000000 }).withMessage('Transportation budget must be between 0 and 1,000,000'),
-  
+    .isFloat({ min: 0, max: 50000000 }).withMessage('Transportation budget must be between 0 and 50,000,000'),
+
   body('budget.breakdown.food')
     .optional()
-    .isFloat({ min: 0, max: 1000000 }).withMessage('Food budget must be between 0 and 1,000,000'),
-  
+    .isFloat({ min: 0, max: 50000000 }).withMessage('Food budget must be between 0 and 50,000,000'),
+
   body('budget.breakdown.activities')
     .optional()
-    .isFloat({ min: 0, max: 1000000 }).withMessage('Activities budget must be between 0 and 1,000,000'),
-  
+    .isFloat({ min: 0, max: 50000000 }).withMessage('Activities budget must be between 0 and 50,000,000'),
+
   body('budget.breakdown.shopping')
     .optional()
-    .isFloat({ min: 0, max: 1000000 }).withMessage('Shopping budget must be between 0 and 1,000,000'),
-  
+    .isFloat({ min: 0, max: 50000000 }).withMessage('Shopping budget must be between 0 and 50,000,000'),
+
   body('budget.breakdown.other')
     .optional()
-    .isFloat({ min: 0, max: 1000000 }).withMessage('Other budget must be between 0 and 1,000,000'),
+    .isFloat({ min: 0, max: 50000000 }).withMessage('Other budget must be between 0 and 50,000,000'),
   
   body('preferences.interests')
     .optional()
