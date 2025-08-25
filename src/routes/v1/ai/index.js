@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { aiController } = require('../../../controllers/ai');
+const tripDraftController = require('../../../controllers/ai/tripDraft.controller');
 const {
+  extractTripInfoValidation,
   chatWithAIValidation,
   generateItineraryValidation,
   optimizeScheduleValidation,
@@ -17,6 +19,172 @@ const { authenticateToken } = require('../../../validations/user.validation');
  *   name: AI
  *   description: AI-powered trip planning and assistance endpoints using Gemini API
  */
+
+/**
+ * @swagger
+ * /api/v1/ai/extract-trip-info:
+ *   post:
+ *     summary: Extract trip information from natural language chat
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - message
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 1000
+ *                 description: Natural language message describing trip plans
+ *                 example: "Tôi muốn đi Tokyo 5 ngày với ngân sách 2000 USD, thích ăn sushi và thăm đền chùa"
+ *               context:
+ *                 type: object
+ *                 properties:
+ *                   intent:
+ *                     type: string
+ *                     enum: [create_trip, modify_trip, ask_info, other]
+ *                     description: User intent for the conversation
+ *               userDefaults:
+ *                 type: object
+ *                 properties:
+ *                   language:
+ *                     type: string
+ *                     enum: [vi, en]
+ *                     default: vi
+ *                   timezone:
+ *                     type: string
+ *                     default: "Asia/Bangkok"
+ *                   currency:
+ *                     type: string
+ *                     default: "VND"
+ *     responses:
+ *       200:
+ *         description: Trip information extracted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Trip information extracted successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     language:
+ *                       type: string
+ *                     timezone:
+ *                       type: string
+ *                     currency:
+ *                       type: string
+ *                     intent:
+ *                       type: string
+ *                     extracted:
+ *                       type: object
+ *                       properties:
+ *                         origin:
+ *                           type: string
+ *                         destinations:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         dates:
+ *                           type: object
+ *                           properties:
+ *                             start:
+ *                               type: string
+ *                             end:
+ *                               type: string
+ *                         duration:
+ *                           type: number
+ *                         travelers:
+ *                           type: object
+ *                         budget:
+ *                           type: object
+ *                         interests:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         pace:
+ *                           type: string
+ *                           enum: [easy, balanced, intense]
+ *                         nightlife:
+ *                           type: string
+ *                           enum: [none, some, heavy]
+ *                         dayStart:
+ *                           type: string
+ *                         dayEnd:
+ *                           type: string
+ *                         quietMorningAfterLateNight:
+ *                           type: boolean
+ *                         transportPrefs:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         walkingLimitKm:
+ *                           type: number
+ *                         dietary:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         mustSee:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         avoid:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         notes:
+ *                           type: string
+ *                     missing:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     ambiguities:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     tokensUsed:
+ *                       type: number
+ *                     processingTime:
+ *                       type: number
+ *                     rateLimitRemaining:
+ *                       type: number
+ *       400:
+ *         description: Bad request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+
+// POST /ai/extract-trip-info - Extract Trip Information from Chat
+router.post('/extract-trip-info', authenticateToken, extractTripInfoValidation, aiController.extractTripInfo);
 
 /**
  * @swagger
@@ -151,6 +319,68 @@ router.post('/chat', authenticateToken, chatWithAIValidation, aiController.chatW
  *                 maxLength: 200
  *                 description: Specific focus for itinerary generation
  *                 example: "family-friendly activities with cultural experiences"
+ *               pace:
+ *                 type: string
+ *                 enum: [easy, balanced, intense]
+ *                 description: Travel pace preference (easy=relaxed, balanced=moderate, intense=packed)
+ *                 example: "balanced"
+ *               nightlife:
+ *                 type: string
+ *                 enum: [none, some, heavy]
+ *                 description: Nightlife preference level
+ *                 example: "some"
+ *               dayStart:
+ *                 type: string
+ *                 pattern: "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+ *                 description: Preferred day start time (HH:MM format)
+ *                 example: "09:00"
+ *               dayEnd:
+ *                 type: string
+ *                 pattern: "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+ *                 description: Preferred day end time (HH:MM format)
+ *                 example: "22:00"
+ *               quietMorningAfterLateNight:
+ *                 type: boolean
+ *                 description: Whether to schedule lighter mornings after late nights
+ *                 example: true
+ *               transportPrefs:
+ *                 type: array
+ *                 maxItems: 10
+ *                 items:
+ *                   type: string
+ *                   maxLength: 50
+ *                 description: Preferred transportation methods
+ *                 example: ["metro", "taxi", "walk"]
+ *               walkingLimitKm:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 20
+ *                 description: Maximum walking distance in kilometers
+ *                 example: 5
+ *               dietary:
+ *                 type: array
+ *                 maxItems: 10
+ *                 items:
+ *                   type: string
+ *                   maxLength: 50
+ *                 description: Dietary requirements or preferences
+ *                 example: ["vegetarian", "halal", "gluten-free"]
+ *               mustSee:
+ *                 type: array
+ *                 maxItems: 20
+ *                 items:
+ *                   type: string
+ *                   maxLength: 100
+ *                 description: Must-visit attractions or experiences
+ *                 example: ["Eiffel Tower", "Louvre Museum", "Seine River Cruise"]
+ *               avoid:
+ *                 type: array
+ *                 maxItems: 20
+ *                 items:
+ *                   type: string
+ *                   maxLength: 100
+ *                 description: Places or activities to avoid
+ *                 example: ["crowded tourist spots", "spicy food", "early mornings"]
  *     responses:
  *       200:
  *         description: Itinerary generated successfully
@@ -797,5 +1027,162 @@ router.get('/stats', authenticateToken, getInteractionStatsValidation, aiControl
 
 // GET /ai/health - AI Service Health Check
 router.get('/health', aiController.getHealthStatus);
+
+/**
+ * @swagger
+ * /api/v1/ai/drafts:
+ *   get:
+ *     summary: Get user's active trip drafts
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Active drafts retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Active drafts retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     drafts:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           sessionId:
+ *                             type: string
+ *                           status:
+ *                             type: string
+ *                           readinessScore:
+ *                             type: number
+ *                           extracted:
+ *                             type: object
+ *                           missing:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                           isReady:
+ *                             type: boolean
+ *                           nextQuestion:
+ *                             type: string
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+
+// GET /ai/drafts - Get User's Active Drafts
+router.get('/drafts', authenticateToken, tripDraftController.getUserActiveDrafts);
+
+/**
+ * @swagger
+ * /api/v1/ai/drafts/{draftId}:
+ *   get:
+ *     summary: Get specific draft by ID
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: draftId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Draft ID
+ *     responses:
+ *       200:
+ *         description: Draft retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Draft not found
+ *       500:
+ *         description: Server error
+ */
+
+// GET /ai/drafts/:draftId - Get Draft by ID
+router.get('/drafts/:draftId', authenticateToken, tripDraftController.getDraftById);
+
+/**
+ * @swagger
+ * /api/v1/ai/drafts/{draftId}/materialize:
+ *   post:
+ *     summary: Materialize draft into actual trip
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: draftId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Draft ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tripData:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                   itinerary:
+ *                     type: object
+ *     responses:
+ *       200:
+ *         description: Trip created successfully
+ *       400:
+ *         description: Draft not ready for trip creation
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Draft not found
+ *       500:
+ *         description: Server error
+ */
+
+// POST /ai/drafts/:draftId/materialize - Materialize Draft
+router.post('/drafts/:draftId/materialize', authenticateToken, tripDraftController.materializeDraft);
+
+/**
+ * @swagger
+ * /api/v1/ai/drafts/{draftId}:
+ *   delete:
+ *     summary: Delete draft
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: draftId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Draft ID
+ *     responses:
+ *       200:
+ *         description: Draft deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Draft not found
+ *       500:
+ *         description: Server error
+ */
+
+// DELETE /ai/drafts/:draftId - Delete Draft
+router.delete('/drafts/:draftId', authenticateToken, tripDraftController.deleteDraft);
 
 module.exports = router;

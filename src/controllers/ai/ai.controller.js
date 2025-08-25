@@ -34,7 +34,38 @@ const chatWithAI = async (req, res) => {
   }
 };
 
-// Generate Trip Itinerary
+// Extract Trip Information from Chat
+const extractTripInfo = async (req, res) => {
+  try {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array()[0];
+      return responseService.sendError(res, firstError.msg, 400);
+    }
+
+    // User ID comes from JWT token (set by authenticateToken middleware)
+    const userId = req.user.userId;
+
+    // Extract fields from request body
+    const { message, context, userDefaults } = req.body;
+
+    // Extract trip information using service
+    const result = await geminiService.extractTripInfoFromChat(userId, {
+      message,
+      context: { ...context, userDefaults }
+    });
+
+    console.log(`Trip info extracted for user ${userId}, tokens: ${result.tokensUsed}`);
+
+    responseService.sendSuccess(res, result, 'Trip information extracted successfully');
+  } catch (error) {
+    console.error('Extract trip info error:', error);
+    responseService.handleServiceError(res, error, 'Server error');
+  }
+};
+
+// Generate Trip Itinerary with enhanced options
 const generateItinerary = async (req, res) => {
   try {
     // Validate request
@@ -50,15 +81,42 @@ const generateItinerary = async (req, res) => {
     // Extract trip ID from URL parameters
     const { tripId } = req.params;
 
-    // Extract focus from request body
-    const { focus } = req.body;
+    // Extract enhanced options from request body
+    const {
+      focus,
+      pace,
+      nightlife,
+      dayStart,
+      dayEnd,
+      quietMorningAfterLateNight,
+      transportPrefs,
+      walkingLimitKm,
+      dietary,
+      mustSee,
+      avoid
+    } = req.body;
 
-    // Generate itinerary using service
-    const result = await geminiService.generateItinerary(userId, tripId, { focus });
+    // Build options object with new features
+    const options = {
+      focus,
+      pace,
+      nightlife,
+      dayStart,
+      dayEnd,
+      quietMorningAfterLateNight,
+      transportPrefs,
+      walkingLimitKm,
+      dietary,
+      mustSee,
+      avoid
+    };
 
-    console.log(`Itinerary generated for trip ${tripId}, user ${userId}, tokens: ${result.tokensUsed}`);
-    
-    responseService.sendSuccess(res, result, 'Itinerary generated successfully');
+    // Generate itinerary using service with enhanced options
+    const result = await geminiService.generateItinerary(userId, tripId, options);
+
+    console.log(`Enhanced itinerary generated for trip ${tripId}, user ${userId}, tokens: ${result.tokensUsed}`);
+
+    responseService.sendSuccess(res, result, 'Enhanced itinerary generated successfully');
   } catch (error) {
     console.error('Generate itinerary error:', error);
     responseService.handleServiceError(res, error, 'Server error');
@@ -232,6 +290,7 @@ const getHealthStatus = async (req, res) => {
 
 module.exports = {
   chatWithAI,
+  extractTripInfo,
   generateItinerary,
   optimizeSchedule,
   validateConstraints,
