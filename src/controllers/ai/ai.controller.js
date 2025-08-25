@@ -34,36 +34,7 @@ const chatWithAI = async (req, res) => {
   }
 };
 
-// Extract Trip Information from Chat
-const extractTripInfo = async (req, res) => {
-  try {
-    // Validate request
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      const firstError = errors.array()[0];
-      return responseService.sendError(res, firstError.msg, 400);
-    }
 
-    // User ID comes from JWT token (set by authenticateToken middleware)
-    const userId = req.user.userId;
-
-    // Extract fields from request body
-    const { message, context, userDefaults } = req.body;
-
-    // Extract trip information using service
-    const result = await geminiService.extractTripInfoFromChat(userId, {
-      message,
-      context: { ...context, userDefaults }
-    });
-
-    console.log(`Trip info extracted for user ${userId}, tokens: ${result.tokensUsed}`);
-
-    responseService.sendSuccess(res, result, 'Trip information extracted successfully');
-  } catch (error) {
-    console.error('Extract trip info error:', error);
-    responseService.handleServiceError(res, error, 'Server error');
-  }
-};
 
 // Generate Trip Itinerary with enhanced options
 const generateItinerary = async (req, res) => {
@@ -288,13 +259,42 @@ const getHealthStatus = async (req, res) => {
   }
 };
 
+// Update Trip Info from Chat
+const updateTripInfoFromChat = async (req, res) => {
+  try {
+    // User ID comes from JWT token (set by authenticateToken middleware)
+    const userId = req.user.userId;
+
+    // Extract trip ID from URL parameters
+    const { tripId } = req.params;
+
+    // Extract message from request body
+    const { message } = req.body;
+
+    // Validate required fields
+    if (!message || message.trim().length === 0) {
+      return responseService.sendError(res, 'Message is required', 400);
+    }
+
+    // Update trip info using service
+    const result = await geminiService.updateTripInfoFromChat(userId, tripId, message);
+
+    console.log(`Trip info updated from chat for trip ${tripId}, user ${userId}`);
+
+    responseService.sendSuccess(res, result, 'Trip information updated successfully');
+  } catch (error) {
+    console.error('Update trip info from chat error:', error);
+    responseService.handleServiceError(res, error, 'Server error');
+  }
+};
+
 module.exports = {
   chatWithAI,
-  extractTripInfo,
   generateItinerary,
   optimizeSchedule,
   validateConstraints,
   suggestActivities,
+  updateTripInfoFromChat,
   getRateLimitStatus,
   getInteractionStats,
   getHealthStatus

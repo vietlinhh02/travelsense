@@ -10,8 +10,7 @@ const User = require('./users/user.model');
 
 // Trip models
 const {
-  Trip,
-  TripDraft
+  Trip
 } = require('./trips');
 
 // AI models
@@ -38,7 +37,6 @@ module.exports = {
   
   // Trip models
   Trip,
-  TripDraft,
   
   // AI models
   AIInteractionLog,
@@ -69,8 +67,7 @@ module.exports = {
   },
   
   trips: {
-    Trip,
-    TripDraft
+    Trip
   },
   
   ai: {
