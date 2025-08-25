@@ -1,43 +1,6 @@
 const { body, param, query } = require('express-validator');
 
-// Extract trip info validation
-const extractTripInfoValidation = [
-  body('message')
-    .notEmpty()
-    .withMessage('Message is required')
-    .isLength({ min: 1, max: 1000 })
-    .withMessage('Message must be between 1 and 1000 characters'),
 
-  body('context')
-    .optional()
-    .isObject()
-    .withMessage('Context must be an object'),
-
-  body('context.intent')
-    .optional()
-    .isIn(['create_trip', 'modify_trip', 'ask_info', 'other'])
-    .withMessage('Intent must be one of: create_trip, modify_trip, ask_info, other'),
-
-  body('userDefaults')
-    .optional()
-    .isObject()
-    .withMessage('User defaults must be an object'),
-
-  body('userDefaults.language')
-    .optional()
-    .isIn(['vi', 'en'])
-    .withMessage('Language must be either "vi" or "en"'),
-
-  body('userDefaults.timezone')
-    .optional()
-    .isString()
-    .withMessage('Timezone must be a string'),
-
-  body('userDefaults.currency')
-    .optional()
-    .isString()
-    .withMessage('Currency must be a string')
-];
 
 // Chat with AI validation
 const chatWithAIValidation = [
@@ -258,7 +221,6 @@ const getInteractionStatsValidation = [
 ];
 
 module.exports = {
-  extractTripInfoValidation,
   chatWithAIValidation,
   generateItineraryValidation,
   optimizeScheduleValidation,
