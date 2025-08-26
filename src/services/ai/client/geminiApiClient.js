@@ -25,16 +25,17 @@ class GeminiApiClient {
       },
       pro: {
         name: 'gemini-2.5-pro',
-        endpoint: `${this.baseUrl}/gemini-2.5-flash:generateContent`
+        endpoint: `${this.baseUrl}/gemini-2.5-pro:generateContent`
       }
     };
 
-    // Default generation config with structured output support
+    // Default generation config optimized for Flash model
+    // Using high token limits for detailed Vietnamese content generation
     this.defaultGenerationConfig = {
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
-      maxOutputTokens: 32000,
+      maxOutputTokens: 8000, // High limit for Vietnamese multi-step generation with tips
     };
 
     // Safety settings
@@ -193,6 +194,27 @@ class GeminiApiClient {
       } catch (error) {
         console.log(` Attempt ${attempt} failed: ${error.message}`);
         
+        // Enhanced error logging for 500 errors
+        if (error.response) {
+          console.error(`❌ HTTP ${error.response.status}: ${error.response.statusText}`);
+          console.error('Error response data:', JSON.stringify(error.response.data, null, 2));
+          
+          if (error.response.status >= 500) {
+            console.error('🔍 Server error detected - this might be:');
+            console.error('- Google API server issues');
+            console.error('- Invalid model endpoint');
+            console.error('- Quota/billing problems');
+            console.error('- Request payload too large');
+          }
+        } else if (error.request) {
+          console.error('❌ No response received from server');
+          console.error('Request details:', {
+            method: error.request.method,
+            url: error.request.url,
+            timeout: error.request.timeout
+          });
+        }
+        
         if (attempt === maxRetries) {
           throw error;
         }
@@ -310,6 +332,14 @@ class GeminiApiClient {
     
     // More detailed content validation
     if (!content || content.trim() === '') {
+      // Check if this was due to MAX_TOKENS at start
+      if (candidate.finishReason === 'MAX_TOKENS') {
+        console.error('❌ Response truncated at start - token limit too low or prompt too complex');
+        console.error('💡 Try: 1) Increase maxOutputTokens, 2) Simplify prompt, 3) Use smaller schema');
+        console.error('🔍 ThoughtsTokenCount:', responseData.usageMetadata?.thoughtsTokenCount);
+        throw new Error('Response truncated at start - increase token limit or simplify prompt');
+      }
+      
       console.error('❌ Empty content from Gemini API');
       console.error('Response data:', JSON.stringify(responseData, null, 2));
       throw new Error('Gemini API returned empty content - this may be due to safety filters, quota limits, or invalid API key');
@@ -339,18 +369,33 @@ class GeminiApiClient {
           isStructured: true
         };
       } catch (parseError) {
+        // If JSON parsing fails, check if response was truncated
+        const wasTruncated = candidate.finishReason === 'MAX_TOKENS';
+        
+        if (wasTruncated) {
+          console.warn('⚠️ Response was truncated due to max token limit');
+          // Try to fix truncated JSON by finding the last complete object/array
+          const fixedJson = this._attemptJsonFix(content);
+          if (fixedJson) {
+            console.log('✅ Fixed truncated JSON successfully');
+            return {
+              content: JSON.parse(fixedJson),
+              tokensUsed: tokensUsed,
+              model: modelName,
+              finishReason: candidate.finishReason || 'STOP',
+              raw: responseData,
+              isStructured: true,
+              truncated: true
+            };
+          }
+        }
+        
         console.warn(`⚠️ Failed to parse structured output JSON: ${parseError.message}`);
         console.warn(`Raw content: ${content.substring(0, 500)}...`);
-        // Fallback to raw content if JSON parsing fails
-        return {
-          content: content,
-          tokensUsed: tokensUsed,
-          model: modelName,
-          finishReason: candidate.finishReason || 'STOP',
-          raw: responseData,
-          isStructured: false,
-          parseError: parseError.message
-        };
+        
+        // For structured output failures, throw error instead of fallback
+        // This prevents downstream services from getting confused
+        throw new Error(`JSON parsing failed: ${parseError.message}${wasTruncated ? ' (Response was truncated)' : ''}`);
       }
     }
 
@@ -363,6 +408,132 @@ class GeminiApiClient {
       raw: responseData,
       isStructured: false
     };
+  }
+
+  /**
+   * Attempt to fix truncated JSON by finding the last complete structure
+   * @param {string} content - Truncated JSON content
+   * @returns {string|null} Fixed JSON or null if unfixable
+   */
+  _attemptJsonFix(content) {
+    if (!content || typeof content !== 'string') return null;
+    
+    try {
+      let fixedContent = content.trim();
+      
+      // Handle different types of truncation
+      
+      // Case 1: Array truncation
+      if (fixedContent.startsWith('[')) {
+        // Find the last complete object in the array
+        let depth = 0;
+        let lastCompleteIndex = -1;
+        let inString = false;
+        let escapeNext = false;
+        
+        for (let i = 0; i < fixedContent.length; i++) {
+          const char = fixedContent[i];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') depth++;
+            else if (char === '}') {
+              depth--;
+              if (depth === 0) {
+                lastCompleteIndex = i;
+              }
+            }
+          }
+        }
+        
+        if (lastCompleteIndex > -1) {
+          fixedContent = fixedContent.substring(0, lastCompleteIndex + 1) + ']';
+          return fixedContent;
+        }
+      }
+      
+      // Case 2: Object truncation (most common)
+      if (fixedContent.startsWith('{')) {
+        // Find the last complete property or string
+        let lastGoodPosition = -1;
+        let depth = 0;
+        let inString = false;
+        let escapeNext = false;
+        
+        for (let i = 0; i < fixedContent.length; i++) {
+          const char = fixedContent[i];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"' && !escapeNext) {
+            if (inString) {
+              // End of string - this is a good position
+              lastGoodPosition = i;
+            }
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') depth++;
+            else if (char === '}') {
+              depth--;
+              lastGoodPosition = i;
+            }
+            else if (char === ',' || char === ']') {
+              lastGoodPosition = i;
+            }
+          }
+        }
+        
+        if (lastGoodPosition > -1) {
+          let cutContent = fixedContent.substring(0, lastGoodPosition + 1);
+          
+          // Ensure we're not cutting in the middle of a property
+          // Look backwards for the last complete property
+          for (let i = cutContent.length - 1; i >= 0; i--) {
+            if (cutContent[i] === ',' || cutContent[i] === '{') {
+              cutContent = cutContent.substring(0, i + 1);
+              break;
+            }
+          }
+          
+          // Close the JSON properly
+          if (!cutContent.endsWith('}')) {
+            cutContent = cutContent.replace(/,\s*$/, '') + '}';
+          }
+          
+          return cutContent;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('JSON fix attempt failed:', error.message);
+      return null;
+    }
   }
 
   /**
