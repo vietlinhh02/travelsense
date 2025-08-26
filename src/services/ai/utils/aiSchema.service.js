@@ -208,37 +208,64 @@ class AISchemaService {
    */
   createItinerarySchema(maxDays = 14, validDates = null) {
     const schema = {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          date: {
-            type: "STRING",
-            description: "Date in YYYY-MM-DD format"
-          },
-          activities: {
-            type: "ARRAY",
-            items: {
-              type: "OBJECT",
-              properties: {
-                time: { type: "STRING", description: "Time in HH:MM format" },
-                title: { type: "STRING" },
-                description: { type: "STRING" },
-                location: { type: "STRING", description: "Location name and address" },
-                duration: { type: "INTEGER", minimum: 15, maximum: 480 },
-                cost: { type: "NUMBER", minimum: 0 },
-                category: { type: "STRING" }
+      type: "OBJECT",
+      properties: {
+        days: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              date: {
+                type: "STRING",
+                description: "Date in YYYY-MM-DD format"
               },
-              required: ["time", "title", "location"]
+              activities: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    time: { type: "STRING", description: "Time in HH:MM format" },
+                    title: { type: "STRING", description: "Activity title - be creative and specific" },
+                    description: { 
+                      type: "STRING", 
+                      description: "Extremely detailed description (500-800 words) including history, culture, architecture, local insights, tips, experiences, and practical information"
+                    },
+                    location: { 
+                      type: "STRING", 
+                      description: "Detailed location name and full address findable on Google Maps" 
+                    },
+                    duration: { type: "INTEGER", minimum: 30, maximum: 480, description: "Duration in minutes" },
+                    cost: { type: "NUMBER", minimum: 0, description: "Estimated cost in VND" },
+                    category: { 
+                      type: "STRING",
+                      description: "Activity category",
+                      enum: ["cultural", "food", "shopping", "nature", "adventure", "relaxation", "nightlife", "transportation", "accommodation"]
+                    },
+                    notes: { 
+                      type: "STRING", 
+                      description: "Comprehensive practical tips, safety information, cultural etiquette, insider recommendations, opening hours, booking info (200-300 words)"
+                    }
+                  },
+                  required: ["time", "title", "description", "location", "duration", "cost", "category", "notes"]
+                },
+                minItems: 8,      // Increased from 5 to 8 activities per day for comprehensive itineraries
+                maxItems: 15     // Increased from 12 to 15 activities per day for maximum detail
+              }
             },
-            minItems: 1,
-            maxItems: 6
-          }
+            required: ["date", "activities"]
+          },
+          minItems: 1,
+          maxItems: maxDays
         },
-        required: ["date", "activities"]
+        tips: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description: "Practical travel tips for the destination",
+          minItems: 3,
+          maxItems: 8
+        }
       },
-      minItems: 1,
-      maxItems: maxDays
+      required: ["days", "tips"]
     };
 
     return this.createJSONSchema(schema);
