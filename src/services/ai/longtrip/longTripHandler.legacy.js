@@ -282,15 +282,17 @@ class LongTripHandler {
 
   /**
    * Calculate appropriate token limit for chunk based on detail level
+   * Optimized for Gemini 2.5 with reasonable token capacity
    * @param {Object} chunk - Chunk configuration
    * @returns {number} Max tokens for chunk
    */
   _calculateMaxTokensForChunk(chunk) {
-    const baseTokens = 2000;
+    // Optimized base tokens for balanced performance and detail
+    const baseTokens = 20000; // Optimized from 50000 to 20000
     const multipliers = {
-      'comprehensive': 1.5,
-      'balanced': 1.0,
-      'simplified': 0.7
+      'comprehensive': 2.0,  // Up to 40K tokens for comprehensive chunks
+      'balanced': 1.5,       // Up to 30K tokens for balanced chunks
+      'simplified': 1.0      // Up to 20K tokens for simplified chunks
     };
     
     return Math.floor(baseTokens * (multipliers[chunk.detailLevel] || 1.0));
