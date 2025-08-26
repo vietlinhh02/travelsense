@@ -250,7 +250,26 @@ const tripSchema = new mongoose.Schema({
     }
   },
   itinerary: {
-    days: [daySchema]
+    days: [daySchema],
+    tips: [{
+      category: {
+        type: String,
+        enum: ['general', 'transportation', 'accommodation', 'food', 'culture', 'safety', 'budget', 'weather'],
+        required: true
+      },
+      title: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 100
+      },
+      content: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 500
+      }
+    }]
   },
   status: {
     type: String,
