@@ -4,16 +4,16 @@
  */
 class TripChunkingService {
   constructor() {
-    // Configuration for trip segmentation
+    // Configuration for trip segmentation - Optimized for balanced performance
     this.config = {
-      maxDaysPerChunk: 7,        // Maximum days per AI generation chunk
-      minDaysForChunking: 5,    // Minimum trip duration to trigger chunking
-      maxTokensPerPrompt: 6000,  // Safe token limit per prompt
-      overlapDays: 2,            // Days of overlap between chunks for continuity
+      maxDaysPerChunk: 10,       // Optimized from 14 to 10 days per chunk
+      minDaysForChunking: 8,     // Optimized from 10 to 8 days
+      maxTokensPerPrompt: 25000, // Optimized from 50K to 25K tokens
+      overlapDays: 1,            // Keep 1 day overlap
       prioritySegments: {
-        arrival: 2,              // First 2 days get detailed treatment
-        departure: 1,            // Last day gets simpler treatment
-        middle: 6              // Middle chunks of 5 days each
+        arrival: 2,              // Back to 2 days for reasonable start
+        departure: 1,            // Back to 1 day for ending
+        middle: 7                // Optimized from 10 to 7 days per middle chunk
       }
     };
   }
@@ -182,15 +182,17 @@ class TripChunkingService {
 
   /**
    * Calculate appropriate token limit for chunk based on detail level
+   * Optimized for Gemini 2.5 with reasonable token capacity
    * @param {Object} chunk - Chunk configuration
    * @returns {number} Max tokens for chunk
    */
   calculateMaxTokensForChunk(chunk) {
-    const baseTokens = 2000;
+    // Optimized base tokens for balanced performance and detail
+    const baseTokens = 20000; // Optimized from 50000 to 20000
     const multipliers = {
-      'comprehensive': 1.5,
-      'balanced': 1.0,
-      'simplified': 0.7
+      'comprehensive': 2.0,  // Up to 40K tokens for comprehensive chunks
+      'balanced': 1.5,       // Up to 30K tokens for balanced chunks
+      'simplified': 1.0      // Up to 20K tokens for simplified chunks
     };
     
     return Math.floor(baseTokens * (multipliers[chunk.detailLevel] || 1.0));
