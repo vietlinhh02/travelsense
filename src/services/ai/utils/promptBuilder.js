@@ -54,7 +54,25 @@ The response must be a valid JSON array in this exact format:
   }
 ]
 
-IMPORTANT:
+IMPORTANT REQUIREMENTS FOR EXTREMELY DETAILED OUTPUT:
+- Generate COMPREHENSIVE and EXTREMELY DETAILED itineraries
+- Use Gemini 2.5's full 1M token capacity - don't hold back on detail!
+- For each activity, provide:
+  * Extensive descriptions (minimum 100-200 words each)
+  * Historical context and cultural significance
+  * Practical tips (what to wear, best time to visit, insider recommendations)
+  * Photo opportunities and must-see highlights
+  * Local customs and etiquette to observe
+  * Approximate costs breakdown (entrance fees, food, transportation)
+  * Alternative options for different weather conditions
+  * Accessibility information
+  * Nearby amenities (restrooms, ATMs, restaurants)
+- Include multiple activity options per time slot when possible
+- Add detailed transportation instructions between locations
+- Provide restaurant recommendations with specific dishes to try
+- Include cultural context and local stories for each location
+- Add shopping suggestions and bargaining tips where relevant
+- Include emergency contact information and safety tips
 - Start your response with [
 - End your response with ]
 - No text before or after the JSON
@@ -62,7 +80,7 @@ IMPORTANT:
 - Always include accurate coordinates for each location
 - Categories: cultural, adventure, relaxation, food, shopping, nature, nightlife, transportation, accommodation
 - Include realistic duration (in minutes) and cost estimates
-- Provide detailed, helpful descriptions for each activity`
+- Create the most comprehensive, detailed itinerary possible - utilize every available token!`
       },
       optimization: {
         header: "Optimize the following trip schedule for better flow and efficiency:",
