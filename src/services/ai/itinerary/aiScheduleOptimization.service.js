@@ -34,7 +34,7 @@ class AIScheduleOptimizationService extends AIBaseService {
         throw new Error('NO_ITINERARY_TO_OPTIMIZE');
       }
 
-      console.log('🔧 Optimizing schedule...');
+      console.log('Optimizing schedule...');
 
       // Prepare optimization request
       const optimizationData = await this._prepareOptimizationData(trip, focus, constraints);
