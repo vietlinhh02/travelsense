@@ -16,6 +16,9 @@ router.use('/ai', require('./ai'));
 // Search routes
 router.use('/search', require('./search'));
 
+// Admin routes
+router.use('/admin', require('./admin'));
+
 
 
 // Health check endpoint

@@ -40,7 +40,7 @@ class GeminiService {
    */
   _initializeServices() {
     // Services are already initialized and self-contained
-    console.log('✅ All AI services initialized successfully');
+    console.log('All AI services initialized successfully');
   }
 
   /**
@@ -56,7 +56,7 @@ class GeminiService {
       longTripHandler: services.longTripHandler
     };
 
-    console.log('🔧 Initializing GeminiService dependencies...');
+    console.log('Initializing GeminiService dependencies...');
 
     // Initialize services that extend AIBaseService and have initialize method
     const servicesToInitialize = [
@@ -71,11 +71,11 @@ class GeminiService {
       if (service && typeof service.initialize === 'function') {
         service.initialize(dependencies);
       } else {
-        console.warn(`⚠️ Service ${service?.constructor?.name || 'unknown'} does not have initialize method`);
+        console.warn(`Service ${service?.constructor?.name || 'unknown'} does not have initialize method`);
       }
     });
 
-    console.log('✅ All AI services initialized with dependencies');
+    console.log('All AI services initialized with dependencies');
   }
 
   // ============================================

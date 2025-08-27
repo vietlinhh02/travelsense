@@ -17,7 +17,12 @@ const envVarsSchema = Joi.object({
     SMTP_PASS: Joi.string().default('').description('SMTP password'),
     SMTP_FROM: Joi.string().email().default('noreply@example.com').description('Default from email'),
     GEMINI_API_KEY: Joi.string().default('').description('Gemini API key'),
-    GEMINI_API_SECRET: Joi.string().default('').description('Gemini API secret')
+    GEMINI_API_SECRET: Joi.string().default('').description('Gemini API secret'),
+    AI_PROVIDER: Joi.string().valid('gemini', 'openrouter').default('gemini').description('AI provider to use'),
+    OPENROUTER_API_KEY: Joi.string().default('').description('OpenRouter API key'),
+    OPENROUTER_DEFAULT_MODEL: Joi.string().default('anthropic/claude-3.5-sonnet').description('Default OpenRouter model'),
+    OPENROUTER_SITE_NAME: Joi.string().default('TravelSense').description('OpenRouter site name'),
+    OPENROUTER_SITE_URL: Joi.string().default('https://travelsense.com').description('OpenRouter site URL')
 })
 .unknown();
 
@@ -62,6 +67,15 @@ module.exports = {
     gemini: {
         apiKey: envVars.GEMINI_API_KEY,
         apiSecret: envVars.GEMINI_API_SECRET
+    },
+    ai: {
+        provider: envVars.AI_PROVIDER,
+        openrouter: {
+            apiKey: envVars.OPENROUTER_API_KEY,
+            defaultModel: envVars.OPENROUTER_DEFAULT_MODEL,
+            siteName: envVars.OPENROUTER_SITE_NAME,
+            siteUrl: envVars.OPENROUTER_SITE_URL
+        }
     },
     log: {
         level: envVars.NODE_ENV === 'development' ? 'debug' : 'info'

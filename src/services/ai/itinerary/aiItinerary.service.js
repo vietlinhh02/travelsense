@@ -36,7 +36,7 @@ class AIItineraryService {
    * @returns {Promise<Object>} Generated itinerary
    */
   async generateItinerary(userId, tripId, options = {}) {
-    console.warn('⚠️ AIItineraryService.generateItinerary() is deprecated. Use AITripService.generateItinerary() instead.');
+    console.warn('AIItineraryService.generateItinerary() is deprecated. Use AITripService.generateItinerary() instead.');
     
     // Delegate to AITripService for backward compatibility
     const AITripService = require('./aiTrip.service');

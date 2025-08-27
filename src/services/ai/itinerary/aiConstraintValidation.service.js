@@ -28,7 +28,7 @@ class AIConstraintValidationService extends AIBaseService {
       // Get trip data
       const trip = await Trip.findById(tripId);
 
-      console.log('✅ Validating trip constraints...');
+      console.log('Validating trip constraints...');
 
       // Perform validation checks
       const validationResults = await this._performConstraintValidation(trip, checkType, strictMode);

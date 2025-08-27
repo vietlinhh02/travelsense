@@ -35,7 +35,7 @@ class AIActivityService extends AIBaseService {
         }
       }
 
-      console.log('🎯 Generating structured activity suggestions...');
+      console.log('Generating structured activity suggestions...');
 
       // Create activity suggestion schema
       const suggestionSchema = this.schemaService.createArraySchema(
@@ -75,7 +75,7 @@ class AIActivityService extends AIBaseService {
         await trip.save();
       }
 
-      console.log('✅ Structured activity suggestions generated successfully!');
+      console.log('Structured activity suggestions generated successfully!');
 
       return {
         suggestions: structuredData,
@@ -98,7 +98,7 @@ class AIActivityService extends AIBaseService {
    */
   async classifyWithEnum(content, categories) {
     try {
-      console.log('🏷️ Classifying content with enum...');
+      console.log(' Classifying content with enum...');
 
       // Create enum schema
       const enumSchema = this.schemaService.createEnumSchema(categories);
@@ -121,7 +121,7 @@ class AIActivityService extends AIBaseService {
           enumSchema.responseSchema
         );
 
-      console.log(`✅ Content classified as: ${classification}`);
+      console.log(`Content classified as: ${classification}`);
 
       return {
         classification,

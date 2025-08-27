@@ -25,7 +25,7 @@ class ChunkedItineraryGenerationService {
       return await aiServices.generateStandardItinerary(trip);
     }
 
-    console.log(`🔄 Generating long trip itinerary in ${analysis.chunks.length} chunks`);
+    console.log(` Generating long trip itinerary in ${analysis.chunks.length} chunks`);
     
     const allDays = [];
     const generationContext = this._initializeGenerationContext(trip);
@@ -33,7 +33,7 @@ class ChunkedItineraryGenerationService {
     // Generate each chunk sequentially for context continuity
     for (const chunk of analysis.chunks) {
       try {
-        console.log(`📋 Generating chunk: ${chunk.id} (Days ${chunk.startDay}-${chunk.endDay})`);
+        console.log(`Generating chunk: ${chunk.id} (Days ${chunk.startDay}-${chunk.endDay})`);
         
         const chunkItinerary = await this._generateChunkItinerary(
           trip,
@@ -51,7 +51,7 @@ class ChunkedItineraryGenerationService {
         await this._delay(1000);
         
       } catch (error) {
-        console.warn(`⚠️ Chunk ${chunk.id} generation failed, using fallback:`, error.message);
+        console.warn(`Chunk ${chunk.id} generation failed, using fallback:`, error.message);
         
         // Generate fallback days for this chunk
         const fallbackDays = this.fallbackGenerator.generateFallbackDays(trip, chunk);
@@ -59,7 +59,7 @@ class ChunkedItineraryGenerationService {
       }
     }
 
-    console.log(`✅ Long trip generation completed with ${allDays.length} days generated`);
+    console.log(` Long trip generation completed with ${allDays.length} days generated`);
     return { days: allDays.slice(0, trip.duration) };
   }
 

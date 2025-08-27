@@ -30,7 +30,7 @@ class AIItineraryAnalysisService extends AIBaseService {
         throw new Error('NO_ITINERARY_TO_ANALYZE');
       }
 
-      console.log('📊 Analyzing itinerary...');
+      console.log('Analyzing itinerary...');
 
       // Perform comprehensive analysis
       const analysis = await this._performItineraryAnalysis(trip, {

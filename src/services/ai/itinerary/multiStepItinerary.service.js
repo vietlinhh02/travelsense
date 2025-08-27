@@ -1,11 +1,23 @@
+const { getAIProvider } = require('../core/aiProvider.service');
+
 /**
  * Multi-step itinerary generation service
  * Breaks down complex itinerary requests into manageable chunks
+ * Now supports multiple AI providers through AIProviderService
  */
 class MultiStepItineraryService {
-  constructor(geminiClient, schemaService) {
-    this.geminiClient = geminiClient;
+  constructor(apiClient = null, schemaService) {
+    // Use AIProviderService for modern provider-agnostic approach
+    this.aiProvider = getAIProvider();
     this.schemaService = schemaService;
+    
+    // Keep backward compatibility with old geminiClient parameter
+    if (apiClient) {
+      console.log('Using legacy client parameter for backward compatibility');
+      this.legacyClient = apiClient;
+    }
+    
+    console.log(`MultiStepItineraryService initialized with ${this.aiProvider.getProviderName().toUpperCase()} provider`);
   }
 
   /**
@@ -104,13 +116,25 @@ Yêu cầu:
 
 Trả về JSON array.`;
 
-    console.log(' Skeleton prompt length:', skeletonPrompt.length);
+    console.log(` Skeleton prompt length: ${skeletonPrompt.length}`);
+    console.log(` Using ${this.aiProvider.getProviderName().toUpperCase()} provider for skeleton generation`);
     
-    return await this.geminiClient.callGeminiWithStructuredOutput(
-      'flash',
-      skeletonPrompt,
-      skeletonSchema
-    );
+    // Use AIProviderService for provider-agnostic API calls
+    if (this.legacyClient) {
+      // Backward compatibility mode
+      return await this.legacyClient.callGeminiWithStructuredOutput(
+        'flash',
+        skeletonPrompt,
+        skeletonSchema
+      );
+    } else {
+      // Modern provider-agnostic mode
+      return await this.aiProvider.callStructuredAPI(
+        'flash',
+        skeletonPrompt,
+        skeletonSchema
+      );
+    }
   }
 
   /**
@@ -218,11 +242,24 @@ Yêu cầu cho mỗi hoạt động:
 
 Trả về JSON đầy đủ.`;
 
-    return await this.geminiClient.callGeminiWithStructuredOutput(
-      'flash',
-      detailPrompt,
-      detailSchema
-    );
+    console.log(`Using ${this.aiProvider.getProviderName().toUpperCase()} provider for day enhancement`);
+    
+    // Use AIProviderService for provider-agnostic API calls
+    if (this.legacyClient) {
+      // Backward compatibility mode
+      return await this.legacyClient.callGeminiWithStructuredOutput(
+        'flash',
+        detailPrompt,
+        detailSchema
+      );
+    } else {
+      // Modern provider-agnostic mode
+      return await this.aiProvider.callStructuredAPI(
+        'flash',
+        detailPrompt,
+        detailSchema
+      );
+    }
   }
 
   /**
@@ -273,11 +310,24 @@ Title: 5-10 từ
 Content: 1-2 câu thực tế, hữu ích
 Tất cả bằng tiếng Việt.`;
 
-    return await this.geminiClient.callGeminiWithStructuredOutput(
-      'flash',
-      tipsPrompt,
-      tipsSchema
-    );
+    console.log(`Using ${this.aiProvider.getProviderName().toUpperCase()} provider for tips generation`);
+    
+    // Use AIProviderService for provider-agnostic API calls
+    if (this.legacyClient) {
+      // Backward compatibility mode
+      return await this.legacyClient.callGeminiWithStructuredOutput(
+        'flash',
+        tipsPrompt,
+        tipsSchema
+      );
+    } else {
+      // Modern provider-agnostic mode
+      return await this.aiProvider.callStructuredAPI(
+        'flash',
+        tipsPrompt,
+        tipsSchema
+      );
+    }
   }
 }
 

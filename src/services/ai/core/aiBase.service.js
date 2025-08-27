@@ -33,7 +33,7 @@ class AIBaseService {
       longTripHandler: !!this.longTripHandler
     };
     
-    console.log(`✅ ${this.constructor.name} initialized:`, initialized);
+    console.log(` ${this.constructor.name} initialized:`, initialized);
   }
 
   /**

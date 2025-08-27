@@ -64,7 +64,7 @@ class AIChatService extends AIBaseService {
         const extractedInfo = await this._extractTripInfoFromMessage(message, trip);
         if (extractedInfo && Object.keys(extractedInfo).length > 0) {
           await this._updateTripWithExtractedInfo(trip._id, extractedInfo);
-          responseContent += '\n\n✅ Đã cập nhật thông tin chuyến đi!';
+          responseContent += '\n\nĐã cập nhật thông tin chuyến đi!';
         }
 
       } else {
